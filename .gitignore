@@ -5,3 +5,4 @@ contracts/cache/
 dist/
 .DS_Store
 core/data/evidence/
+secrets/

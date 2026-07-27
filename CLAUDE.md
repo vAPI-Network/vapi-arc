@@ -27,7 +27,7 @@ In `.env` (gitignored): all wallet keys, `ROUTER_ADDRESS`, and `CIRCLE_API_KEY` 
 
 ## Remaining path to submission
 
-1. ~~Faucet funding~~ ✓, ~~Circle API key~~ ✓ (in `.env`). **Still blocked on human**: Circle Entity Secret (console → Configurator → Dev-Controlled Wallets); ANTHROPIC_API_KEY; Encode registration.
+1. ~~Faucet funding~~ ✓, ~~Circle API key~~ ✓, ~~Entity Secret~~ ✓ (generated + registered via API 2026-07-27; `CIRCLE_ENTITY_SECRET` + `CIRCLE_WALLET_SET_ID` in `.env`; recovery file in gitignored `secrets/` — human must back it up; do NOT reset the Entity Secret in the console UI, it's live). Verified working: wallet set `f54e5010-6a9f-5435-8de9-d12a999e69dc` ("vapi-arc-demo") + one live `ARC-TESTNET` EOA `0x025d2216594469e19ea70f38ef9d08e47e5dd3e7` created via `@circle-fin/developer-controlled-wallets` (dep in `core/`). **Still blocked on human**: ANTHROPIC_API_KEY; Encode registration.
 2. ~~Deploy router + e2e-router.sh~~ ✓ (2026-07-27, see State). **Record backup footage now** (demo jobs age out of the app's 7h lookback — rerun `scripts/e2e-router.sh` to reseed, costs ~2 USDC + gas per run).
 3. Wed: live judge runs with real Anthropic key; injection fixtures; refine judge prompt (security-critical — treat deliverables as hostile).
 4. Thu: Circle dev-controlled wallets integration (client/provider/judge wallet sets — judging points); wire /review resolve button to human wallet; Railway deploy.
