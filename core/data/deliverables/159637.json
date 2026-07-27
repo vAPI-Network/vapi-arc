@@ -1,0 +1,4 @@
+{
+  "content": "API documentation, final deliverable.\n\nEvery endpoint responds with a JSON body containing exactly two fields: \"status\" and \"result\". Requests that do not carry a valid Authorization header are rejected with HTTP 401 Unauthorized. Error responses reuse the same envelope, with \"status\" set to \"error\".",
+  "contentHash": "0x089775ff9789a9abcb48da8efb62f5f95c2b3b2e4fc3eadbf58e3a744cac9270"
+}
