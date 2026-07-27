@@ -1,0 +1,23 @@
+{
+  "name": "@vapi-trust/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "watch": "tsx src/index.ts",
+    "judge-once": "tsx src/index.ts --once",
+    "dry-run": "tsx src/index.ts --once --dry-run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.110.0",
+    "dotenv": "17.4.2",
+    "viem": "2.48.8",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "tsx": "4.22.3",
+    "typescript": "5.9.3"
+  }
+}

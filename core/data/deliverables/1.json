@@ -1,0 +1,4 @@
+{
+  "content": "The API returns JSON with status and result fields, and rejects unauthenticated requests with HTTP 401.",
+  "contentHash": "0xb2cb7ee28ba629e7834ced57f8edf364a34c7bedb74330adb4f1bea77d1f33f2"
+}

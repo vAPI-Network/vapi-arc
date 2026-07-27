@@ -1,0 +1,9 @@
+{
+  "name": "vapi-trust",
+  "private": true,
+  "packageManager": "pnpm@10.27.0",
+  "workspaces": [
+    "core",
+    "app"
+  ]
+}
