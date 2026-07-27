@@ -28,9 +28,20 @@ for a in "$CLIENT_ADDR" "$PROVIDER_ADDR" "$EVALUATOR"; do
 done
 
 say "createJob(provider=$PROVIDER_ADDR, evaluator=$EVALUATOR)"
-send "$CLIENT_PK" "createJob(address,address,uint256,string,address)" \
-  "$PROVIDER_ADDR" "$EVALUATOR" "$EXPIRES" "vapi-trust E2E: summarize doc per rubric v1" 0x0000000000000000000000000000000000000000
-JOB_ID=$(( $(cast call "$AGENTIC_COMMERCE" 'jobCounter()(uint256)' -r "$ARC_RPC_URL" | awk '{print $1}') - 1 ))
+# jobCounter() is racy on the shared testnet contract; read the id from our own receipt.
+JOB_CREATED_TOPIC=0xb0f0239bfdd96453e24733e18bfc24b70d8fadf123dd977473518dd577ee79b9
+JOB_ID=$(cast send "$AGENTIC_COMMERCE" "createJob(address,address,uint256,string,address)" \
+  "$PROVIDER_ADDR" "$EVALUATOR" "$EXPIRES" "vapi-trust E2E: summarize doc per rubric v1" 0x0000000000000000000000000000000000000000 \
+  --private-key "$CLIENT_PK" -r "$ARC_RPC_URL" --json \
+  | JOB_CREATED_TOPIC="$JOB_CREATED_TOPIC" python3 -c '
+import sys, json, os
+d = json.load(sys.stdin)
+print(d["transactionHash"], "status:", d["status"], file=sys.stderr)
+topic = os.environ["JOB_CREATED_TOPIC"]
+ids = [int(l["topics"][1], 16) for l in d["logs"] if l["topics"][0].lower() == topic]
+assert len(ids) == 1, f"expected 1 JobCreated log, got {len(ids)}"
+print(ids[0])
+')
 say "jobId=$JOB_ID"
 
 say "setBudget($BUDGET) by provider"

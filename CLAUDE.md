@@ -4,14 +4,16 @@ Hackathon build for Circle's Arc "Programmable Money" hackathon (Agentic track).
 
 **The product:** auditable evaluator-as-a-service for ERC-8183. Our `EvaluationRouter` holds the evaluator seat on Circle's deployed AgenticCommerce contract; a guarded AI judge settles narrow low-risk jobs automatically; uncertain/hostile work routes to a human **before** funds move (settlement is terminal in ERC-8183 — no appeals). Full design + trimmed scope + schedule: `docs/specs/2026-07-27-vapi-trust-design.md` (read it first).
 
-## State (as of Mon 2026-07-27 evening)
+## State (as of Mon 2026-07-27 night — SUBMITTABLE FLOOR EXISTS ON-CHAIN)
 
 Done, committed, verified:
-- `contracts/src/EvaluationRouter.sol` — 22/22 Foundry tests green (`cd contracts && forge test`). Deploy: `contracts/script/DeployRouter.s.sol`.
+- `contracts/src/EvaluationRouter.sol` — 22/22 Foundry tests green (`cd contracts && forge test`). **Deployed to Arc testnet** at `0x215766ef04b4d3af08e1cfc15863962a305af3d4` (deployer = client wallet; oracle/human/cap 100 USDC/minConf 8000bp as in `DeployRouter.s.sol`).
+- `scripts/e2e-router.sh` — **ran green on-chain**: job 159631 AI-settled (AIVerdict 9400bp → Completed, provider paid 1 USDC), job 159632 escalated → human-rejected, unauthorized verdict reverted. Job IDs now parsed from the `JobCreated` receipt log (`jobCounter()-1` raced on the shared contract — both e2e scripts fixed).
 - `core/` — guarded AI judge worker (watcher → hostile-input judge → deterministic gate → evidence records → oracle submitter). `pnpm -C core typecheck` green; `node --import tsx src/index.ts --once --dry-run` works without API keys.
-- `app/` — React Router v7 SSR dashboard (feed, /review queue, /provider/:address, /api/reputation/:address). No DB; loaders read Arc RPC. `pnpm -C app build` green; smoke-tested.
-- `scripts/e2e-lifecycle.sh` + `scripts/e2e-router.sh` — full two-job demo (AI settle / escalate→human reject / unauthorized revert proof). **Blocked on faucet funds.**
+- `app/` — React Router v7 SSR dashboard (feed, /review queue, /provider/:address, /api/reputation/:address). No DB; loaders read Arc RPC. **Verified against the live router**: all routes 200, feed shows both demo jobs, reputation API returns completed=1/rejected=1. Event fetching is one shared chunked sweep (all event names, both contracts, one `eth_getLogs` per 9k-block chunk) behind a 2-slot RPC semaphore with backoff — required by the public RPC's ~2 req/s cap; do not reintroduce per-event `Promise.all` fan-out.
 - `adapters/arc/abi/` — pinned ABIs of deployed AgenticCommerce (UUPS proxy, Circle-upgradeable) + our router.
+
+In `.env` (gitignored): all wallet keys, `ROUTER_ADDRESS`, and `CIRCLE_API_KEY` (Standard testnet key `vapi-arc-hackathon`). Wallets faucet-funded 20 USDC each (provider now ~21 after job A payout).
 
 ## Chain facts (verified on-chain 2026-07-27)
 
@@ -20,11 +22,13 @@ Done, committed, verified:
 - Job status enum: Open=0 Funded=1 Submitted=2 Completed=3 Rejected=4 Expired=5; `complete()` requires Submitted + caller==evaluator; evaluator fee paid only on complete (currently 0 bps; platform fee 0 bps)
 - USDC = `0x3600000000000000000000000000000000000000` (6dp ERC-20 view of native gas)
 - Demo wallets in gitignored `.env` (testnet throwaway): client `0x6581760Dcbc2a2617a8DF2f20273b9B52660DA31`, provider `0x6734b4E43e6EF164ce07eC17fC27FdD7C51078d0`, oracle `0x07CFB9b2F7a6F363Bf1804f2d511BcCf09cD59e9`, human `0x3c8bBdBE8a9A1f51df3fadB6292CBcf0cDFa141F`
+- Our EvaluationRouter: `0x215766ef04b4d3af08e1cfc15863962a305af3d4` (deployed 2026-07-27, holds evaluator seat for demo jobs)
+- Public RPC limits (measured): ~2 req/s per IP (HTTP 429, code -32011 "request limit reached"), `eth_getLogs` capped at a 10,000-block range; block time ~0.51s (so the app's 50k-block lookback ≈ 7h — reseed demo jobs shortly before recording/judging). Canonical multicall3 (`0xcA11...CA11`) is deployed; a WAF blocks default-python user-agents (curl/cast UAs fine).
 
 ## Remaining path to submission
 
-1. **Blocked on human**: faucet USDC to the 4 wallets (faucet.circle.com; client needs most); Circle Standard testnet API key (`vapi-arc-hackathon`) + Entity Secret; ANTHROPIC_API_KEY; Encode registration.
-2. Once funded: deploy router (`forge script script/DeployRouter.s.sol --rpc-url $ARC_RPC_URL --private-key $CLIENT_PK --broadcast`), set `ROUTER_ADDRESS` in `.env` + app env, run `scripts/e2e-router.sh` → submittable floor exists. Record backup footage immediately.
+1. ~~Faucet funding~~ ✓, ~~Circle API key~~ ✓ (in `.env`). **Still blocked on human**: Circle Entity Secret (console → Configurator → Dev-Controlled Wallets); ANTHROPIC_API_KEY; Encode registration.
+2. ~~Deploy router + e2e-router.sh~~ ✓ (2026-07-27, see State). **Record backup footage now** (demo jobs age out of the app's 7h lookback — rerun `scripts/e2e-router.sh` to reseed, costs ~2 USDC + gas per run).
 3. Wed: live judge runs with real Anthropic key; injection fixtures; refine judge prompt (security-critical — treat deliverables as hostile).
 4. Thu: Circle dev-controlled wallets integration (client/provider/judge wallet sets — judging points); wire /review resolve button to human wallet; Railway deploy.
 5. Fri: 10 unattended E2E runs; adversarial review of router; arcscan source verification; **feature freeze Friday night**.

@@ -32,6 +32,10 @@ const arcTestnet = defineChain({
   id: ARC_CHAIN_ID,
   name: "Arc Testnet",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  contracts: {
+    // canonical multicall3, verified deployed on Arc testnet
+    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
+  },
   rpcUrls: {
     default: { http: [ARC_RPC_URL] },
   },
@@ -78,6 +82,7 @@ export function cached<T>(
 
 export type ChainEvent = {
   eventName: string;
+  address: Address;
   args: Record<string, unknown>;
   blockNumber: bigint;
   logIndex: number;
@@ -137,14 +142,18 @@ function eventFromAbi(abi: Abi, name: string): AbiEvent {
   return getAbiItem({ abi, name }) as AbiEvent;
 }
 
-function toChainEvent(eventName: string, log: unknown): ChainEvent | null {
+function toChainEvent(log: unknown): ChainEvent | null {
   const value = log as {
+    eventName?: string;
+    address?: Address;
     args?: Record<string, unknown>;
     blockNumber?: bigint | null;
     logIndex?: number | null;
     transactionHash?: Hash | null;
   };
   if (
+    !value.eventName ||
+    !value.address ||
     value.blockNumber === null ||
     value.blockNumber === undefined ||
     value.logIndex === null ||
@@ -154,7 +163,8 @@ function toChainEvent(eventName: string, log: unknown): ChainEvent | null {
     return null;
   }
   return {
-    eventName,
+    eventName: value.eventName,
+    address: getAddress(value.address),
     args: value.args ?? {},
     blockNumber: value.blockNumber,
     logIndex: value.logIndex,
@@ -164,7 +174,7 @@ function toChainEvent(eventName: string, log: unknown): ChainEvent | null {
 
 async function recentRange(): Promise<{ fromBlock: bigint; toBlock: bigint }> {
   const toBlock = await cached("latest-block", () =>
-    publicClient.getBlockNumber(),
+    withRpcSlot(() => publicClient.getBlockNumber()),
   );
   return {
     fromBlock: toBlock > RECENT_BLOCKS ? toBlock - RECENT_BLOCKS : 0n,
@@ -172,22 +182,83 @@ async function recentRange(): Promise<{ fromBlock: bigint; toBlock: bigint }> {
   };
 }
 
-async function getLogsChunked(
-  address: Address,
-  abi: Abi,
-  eventName: string,
-): Promise<ChainEvent[]> {
+// The public Arc RPC rate-limits bursts (-32011 "request limit reached"), so
+// getLogs calls go through a small semaphore with backoff instead of Promise.all firing all at once.
+const RPC_CONCURRENCY = 2;
+let rpcActive = 0;
+const rpcWaiters: Array<() => void> = [];
+
+function isRateLimited(error: unknown): boolean {
+  for (
+    let current: unknown = error;
+    current;
+    current = (current as { cause?: unknown }).cause
+  ) {
+    const message =
+      current instanceof Error ? current.message : String(current);
+    if (
+      message.includes("request limit reached") ||
+      message.includes("-32011") ||
+      message.includes("Status: 429")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function withRpcSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (rpcActive >= RPC_CONCURRENCY) {
+    await new Promise<void>((resolve) => rpcWaiters.push(resolve));
+  }
+  rpcActive += 1;
+  try {
+    let delayMs = 1_000;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (!isRateLimited(error) || attempt >= 5) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        delayMs *= 2;
+      }
+    }
+  } finally {
+    rpcActive -= 1;
+    rpcWaiters.shift()?.();
+  }
+}
+
+// Every event any route needs. One chunked sweep fetches all of them for both
+// contracts (address + topic0 are OR-filters in eth_getLogs), and routes filter
+// in memory — the ~2 req/s public RPC can't afford one getLogs per event name.
+const AGENTIC_EVENT_NAMES = ["JobSubmitted", "JobCompleted", "JobRejected"];
+const ROUTER_EVENT_NAMES = ["AIVerdict", "Escalated", "HumanVerdict"];
+
+async function sweepLogs(): Promise<ChainEvent[]> {
+  const router = configuredRouterAddress();
   const { fromBlock, toBlock } = await recentRange();
   const cacheKey = [
-    "logs",
-    address,
-    eventName,
+    "sweep",
+    router ?? "no-router",
     fromBlock.toString(),
     toBlock.toString(),
   ].join(":");
 
   return cached(cacheKey, async () => {
-    const event = eventFromAbi(abi, eventName);
+    const addresses = router
+      ? [agenticCommerceAddress, router]
+      : [agenticCommerceAddress];
+    const events = [
+      ...AGENTIC_EVENT_NAMES.map((name) =>
+        eventFromAbi(agenticCommerceAbi, name),
+      ),
+      ...(router
+        ? ROUTER_EVENT_NAMES.map((name) =>
+            eventFromAbi(evaluationRouterAbi, name),
+          )
+        : []),
+    ];
     const logs: ChainEvent[] = [];
 
     for (
@@ -199,14 +270,16 @@ async function getLogsChunked(
         chunkStart + LOG_CHUNK_SIZE - 1n > toBlock
           ? toBlock
           : chunkStart + LOG_CHUNK_SIZE - 1n;
-      const chunk = await publicClient.getLogs({
-        address,
-        event,
-        fromBlock: chunkStart,
-        toBlock: chunkEnd,
-      });
+      const chunk = await withRpcSlot(() =>
+        publicClient.getLogs({
+          address: addresses,
+          events,
+          fromBlock: chunkStart,
+          toBlock: chunkEnd,
+        }),
+      );
       for (const log of chunk) {
-        const normalized = toChainEvent(eventName, log);
+        const normalized = toChainEvent(log);
         if (normalized) logs.push(normalized);
       }
     }
@@ -215,29 +288,27 @@ async function getLogsChunked(
   });
 }
 
-async function agenticEvents(names: string[]): Promise<ChainEvent[]> {
-  const groups = await Promise.all(
-    names.map((name) =>
-      getLogsChunked(
-        agenticCommerceAddress,
-        agenticCommerceAbi,
-        name,
-      ),
-    ),
+async function eventsFrom(
+  address: Address,
+  names: string[],
+): Promise<ChainEvent[]> {
+  const all = await sweepLogs();
+  const wanted = new Set(names);
+  return all.filter(
+    (event) =>
+      wanted.has(event.eventName) && sameAddress(event.address, address),
   );
-  return groups.flat();
+}
+
+async function agenticEvents(names: string[]): Promise<ChainEvent[]> {
+  return eventsFrom(agenticCommerceAddress, names);
 }
 
 async function routerEvents(
   router: Address,
   names: string[],
 ): Promise<ChainEvent[]> {
-  const groups = await Promise.all(
-    names.map((name) =>
-      getLogsChunked(router, evaluationRouterAbi, name),
-    ),
-  );
-  return groups.flat();
+  return eventsFrom(router, names);
 }
 
 function jobIdFrom(event: ChainEvent): string | null {
@@ -319,14 +390,25 @@ async function getJobs(jobIds: string[]): Promise<Map<string, JobRecord>> {
   const key = `jobs:${uniqueIds.slice().sort().join(",")}`;
 
   return cached(key, async () => {
-    const results = await publicClient.multicall({
-      allowFailure: true,
-      contracts: uniqueIds.map((jobId) => ({
-        address: agenticCommerceAddress,
-        abi: agenticCommerceAbi,
-        functionName: "getJob",
-        args: [BigInt(jobId)],
-      })),
+    const results = await withRpcSlot(async () => {
+      const batch = await publicClient.multicall({
+        allowFailure: true,
+        contracts: uniqueIds.map((jobId) => ({
+          address: agenticCommerceAddress,
+          abi: agenticCommerceAbi,
+          functionName: "getJob",
+          args: [BigInt(jobId)],
+        })),
+      });
+      // allowFailure swallows transport-level 429s as per-call failures (viem
+      // splits large multicalls, so a single rate-limited sub-batch silently
+      // drops those jobs). Rethrow so withRpcSlot backs off and retries
+      // instead of rendering an empty feed.
+      const throttled = batch.find(
+        (result) => result.status !== "success" && isRateLimited(result.error),
+      );
+      if (throttled && throttled.status !== "success") throw throttled.error;
+      return batch;
     });
 
     const jobs = new Map<string, JobRecord>();

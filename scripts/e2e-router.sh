@@ -18,12 +18,26 @@ tx() { # tx <pk> <to> <sig-and-args...>
     | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   tx:", d["transactionHash"], "status:", d["status"])'
 }
 
+# JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, ...)
+JOB_CREATED_TOPIC=0xb0f0239bfdd96453e24733e18bfc24b70d8fadf123dd977473518dd577ee79b9
+
 make_job() { # make_job <evaluator> -> prints jobId
-  tx "$CLIENT_PK" "$AGENTIC_COMMERCE" "createJob(address,address,uint256,string,address)" \
+  # jobCounter() is racy on the shared testnet contract; read the id from our own receipt.
+  cast send "$AGENTIC_COMMERCE" "createJob(address,address,uint256,string,address)" \
     "$PROVIDER_ADDR" "$1" "$EXPIRES" "vapi-trust demo: summarize brief per rubric v1" \
-    0x0000000000000000000000000000000000000000 >&2
-  echo $(( $(cast call "$AGENTIC_COMMERCE" 'jobCounter()(uint256)' -r "$ARC_RPC_URL" | awk '{print $1}') - 1 ))
+    0x0000000000000000000000000000000000000000 \
+    --private-key "$CLIENT_PK" -r "$ARC_RPC_URL" --json \
+    | python3 -c '
+import sys, json, os
+d = json.load(sys.stdin)
+print("   tx:", d["transactionHash"], "status:", d["status"], file=sys.stderr)
+topic = os.environ["JOB_CREATED_TOPIC"]
+ids = [int(l["topics"][1], 16) for l in d["logs"] if l["topics"][0].lower() == topic]
+assert len(ids) == 1, f"expected 1 JobCreated log, got {len(ids)}"
+print(ids[0])
+'
 }
+export JOB_CREATED_TOPIC
 
 fund_and_submit() { # fund_and_submit <jobId> <deliverable-hash>
   tx "$PROVIDER_PK" "$AGENTIC_COMMERCE" "setBudget(uint256,uint256,bytes)" "$1" "$BUDGET" 0x
