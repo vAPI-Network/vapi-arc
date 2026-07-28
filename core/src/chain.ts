@@ -4,6 +4,7 @@ import {
   defineChain,
   http,
   type Hex,
+  type Transport,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import "./env.js";
@@ -12,6 +13,35 @@ const DEFAULT_RPC_URL = "https://rpc.testnet.arc.network";
 
 function arcRpcUrl(): string {
   return process.env.ARC_RPC_URL || DEFAULT_RPC_URL;
+}
+
+// The public Arc RPC allows ~2 req/s and rejects bursts with the nonstandard
+// JSON-RPC code -32011 ("request limit reached"), which viem's built-in
+// retry does not recognize. Wrap the transport with a backoff for it.
+function patientHttp(url: string): Transport {
+  const base = http(url, { timeout: 12_000 });
+  return (params) => {
+    const transport = base(params);
+    const request = transport.request.bind(transport);
+    const patientRequest: typeof transport.request = async (args, options) => {
+      let delayMs = 1_000;
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          return await request(args, options);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const rateLimited =
+            message.includes("request limit reached") ||
+            message.includes("-32011");
+          if (!rateLimited || attempt >= 6) throw error;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          delayMs *= 2;
+        }
+      }
+    };
+    return { ...transport, request: patientRequest };
+  };
 }
 
 export const arcTestnet = defineChain({
@@ -38,7 +68,7 @@ export const arcTestnet = defineChain({
 
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(arcRpcUrl()),
+  transport: patientHttp(arcRpcUrl()),
 });
 
 export type ArcPublicClient = typeof publicClient;
@@ -59,7 +89,7 @@ export function createOracleWalletClient() {
   return createWalletClient({
     account,
     chain: arcTestnet,
-    transport: http(arcRpcUrl()),
+    transport: patientHttp(arcRpcUrl()),
   });
 }
 

@@ -88,6 +88,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                             {(job.confidenceBP / 100).toFixed(2)}% confidence
                           </small>
                         )}
+                        {job.lane === "human" && (
+                          <small>human review lane (client-chosen)</small>
+                        )}
                       </div>
                     </td>
                     <td>

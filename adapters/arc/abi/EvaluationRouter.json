@@ -1,526 +1,615 @@
 {
- "abi": [
-  {
-   "type": "constructor",
-   "inputs": [
+  "abi": [
     {
-     "name": "target_",
-     "type": "address",
-     "internalType": "address"
+      "type": "constructor",
+      "inputs": [
+        {
+          "name": "target_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "oracle_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "humanResolver_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "autoSettleCap_",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "minConfidenceBP_",
+          "type": "uint16",
+          "internalType": "uint16"
+        }
+      ],
+      "stateMutability": "nonpayable"
     },
     {
-     "name": "oracle_",
-     "type": "address",
-     "internalType": "address"
+      "type": "function",
+      "name": "autoSettleCap",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
-     "name": "humanResolver_",
-     "type": "address",
-     "internalType": "address"
+      "type": "function",
+      "name": "escalate",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "reasonHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-     "name": "autoSettleCap_",
-     "type": "uint256",
-     "internalType": "uint256"
+      "type": "function",
+      "name": "evidence",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
-     "name": "minConfidenceBP_",
-     "type": "uint16",
-     "internalType": "uint16"
-    }
-   ],
-   "stateMutability": "nonpayable"
-  },
-  {
-   "type": "function",
-   "name": "autoSettleCap",
-   "inputs": [],
-   "outputs": [
-    {
-     "name": "",
-     "type": "uint256",
-     "internalType": "uint256"
-    }
-   ],
-   "stateMutability": "view"
-  },
-  {
-   "type": "function",
-   "name": "escalate",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
+      "type": "function",
+      "name": "humanResolve",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "approve",
+          "type": "bool",
+          "internalType": "bool"
+        },
+        {
+          "name": "evidenceHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
     },
     {
-     "name": "reasonHash",
-     "type": "bytes32",
-     "internalType": "bytes32"
-    }
-   ],
-   "outputs": [],
-   "stateMutability": "nonpayable"
-  },
-  {
-   "type": "function",
-   "name": "evidence",
-   "inputs": [
-    {
-     "name": "",
-     "type": "uint256",
-     "internalType": "uint256"
-    }
-   ],
-   "outputs": [
-    {
-     "name": "",
-     "type": "bytes32",
-     "internalType": "bytes32"
-    }
-   ],
-   "stateMutability": "view"
-  },
-  {
-   "type": "function",
-   "name": "humanResolve",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
+      "type": "function",
+      "name": "humanResolver",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
-     "name": "approve",
-     "type": "bool",
-     "internalType": "bool"
+      "type": "function",
+      "name": "lanes",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint8",
+          "internalType": "enum EvaluationRouter.ReviewLane"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
-     "name": "evidenceHash",
-     "type": "bytes32",
-     "internalType": "bytes32"
-    }
-   ],
-   "outputs": [],
-   "stateMutability": "nonpayable"
-  },
-  {
-   "type": "function",
-   "name": "humanResolver",
-   "inputs": [],
-   "outputs": [
-    {
-     "name": "",
-     "type": "address",
-     "internalType": "address"
-    }
-   ],
-   "stateMutability": "view"
-  },
-  {
-   "type": "function",
-   "name": "minConfidenceBP",
-   "inputs": [],
-   "outputs": [
-    {
-     "name": "",
-     "type": "uint16",
-     "internalType": "uint16"
-    }
-   ],
-   "stateMutability": "view"
-  },
-  {
-   "type": "function",
-   "name": "oracle",
-   "inputs": [],
-   "outputs": [
-    {
-     "name": "",
-     "type": "address",
-     "internalType": "address"
-    }
-   ],
-   "stateMutability": "view"
-  },
-  {
-   "type": "function",
-   "name": "owner",
-   "inputs": [],
-   "outputs": [
-    {
-     "name": "",
-     "type": "address",
-     "internalType": "address"
-    }
-   ],
-   "stateMutability": "view"
-  },
-  {
-   "type": "function",
-   "name": "resolutions",
-   "inputs": [
-    {
-     "name": "",
-     "type": "uint256",
-     "internalType": "uint256"
-    }
-   ],
-   "outputs": [
-    {
-     "name": "",
-     "type": "uint8",
-     "internalType": "enum EvaluationRouter.Resolution"
-    }
-   ],
-   "stateMutability": "view"
-  },
-  {
-   "type": "function",
-   "name": "setConfig",
-   "inputs": [
-    {
-     "name": "oracle_",
-     "type": "address",
-     "internalType": "address"
+      "type": "function",
+      "name": "minConfidenceBP",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint16",
+          "internalType": "uint16"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
-     "name": "humanResolver_",
-     "type": "address",
-     "internalType": "address"
+      "type": "function",
+      "name": "oracle",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
-     "name": "autoSettleCap_",
-     "type": "uint256",
-     "internalType": "uint256"
+      "type": "function",
+      "name": "owner",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
-     "name": "minConfidenceBP_",
-     "type": "uint16",
-     "internalType": "uint16"
+      "type": "function",
+      "name": "resolutions",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint8",
+          "internalType": "enum EvaluationRouter.Resolution"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "setConfig",
+      "inputs": [
+        {
+          "name": "oracle_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "humanResolver_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "autoSettleCap_",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "minConfidenceBP_",
+          "type": "uint16",
+          "internalType": "uint16"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setLane",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "lane",
+          "type": "uint8",
+          "internalType": "enum EvaluationRouter.ReviewLane"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "submitAIVerdict",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "approve",
+          "type": "bool",
+          "internalType": "bool"
+        },
+        {
+          "name": "confidenceBP",
+          "type": "uint16",
+          "internalType": "uint16"
+        },
+        {
+          "name": "evidenceHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "sweep",
+      "inputs": [
+        {
+          "name": "token",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "to",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "target",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract IAgenticCommerce"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "transferOwnership",
+      "inputs": [
+        {
+          "name": "newOwner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "AIVerdict",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "approved",
+          "type": "bool",
+          "indexed": false,
+          "internalType": "bool"
+        },
+        {
+          "name": "confidenceBP",
+          "type": "uint16",
+          "indexed": false,
+          "internalType": "uint16"
+        },
+        {
+          "name": "evidenceHash",
+          "type": "bytes32",
+          "indexed": false,
+          "internalType": "bytes32"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ConfigUpdated",
+      "inputs": [
+        {
+          "name": "oracle",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "humanResolver",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "autoSettleCap",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "minConfidenceBP",
+          "type": "uint16",
+          "indexed": false,
+          "internalType": "uint16"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Escalated",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "reasonHash",
+          "type": "bytes32",
+          "indexed": false,
+          "internalType": "bytes32"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "HumanVerdict",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "approved",
+          "type": "bool",
+          "indexed": false,
+          "internalType": "bool"
+        },
+        {
+          "name": "evidenceHash",
+          "type": "bytes32",
+          "indexed": false,
+          "internalType": "bytes32"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "LaneSet",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "lane",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "enum EvaluationRouter.ReviewLane"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "OwnershipTransferred",
+      "inputs": [
+        {
+          "name": "previousOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "newOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "error",
+      "name": "AboveAutoCap",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "budget",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "cap",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AlreadyResolved",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BelowConfidence",
+      "inputs": [
+        {
+          "name": "confidenceBP",
+          "type": "uint16",
+          "internalType": "uint16"
+        },
+        {
+          "name": "minimum",
+          "type": "uint16",
+          "internalType": "uint16"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "HumanReviewRequired",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "JobExpired",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LaneLocked",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NotClient",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NotEscalatable",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NotEvaluator",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NotHumanResolver",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "NotOracle",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "NotOwner",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "SweepFailed",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "WrongStatus",
+      "inputs": [
+        {
+          "name": "jobId",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "status",
+          "type": "uint8",
+          "internalType": "uint8"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ZeroAddress",
+      "inputs": []
     }
-   ],
-   "outputs": [],
-   "stateMutability": "nonpayable"
-  },
-  {
-   "type": "function",
-   "name": "submitAIVerdict",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
-    },
-    {
-     "name": "approve",
-     "type": "bool",
-     "internalType": "bool"
-    },
-    {
-     "name": "confidenceBP",
-     "type": "uint16",
-     "internalType": "uint16"
-    },
-    {
-     "name": "evidenceHash",
-     "type": "bytes32",
-     "internalType": "bytes32"
-    }
-   ],
-   "outputs": [],
-   "stateMutability": "nonpayable"
-  },
-  {
-   "type": "function",
-   "name": "sweep",
-   "inputs": [
-    {
-     "name": "token",
-     "type": "address",
-     "internalType": "address"
-    },
-    {
-     "name": "to",
-     "type": "address",
-     "internalType": "address"
-    }
-   ],
-   "outputs": [],
-   "stateMutability": "nonpayable"
-  },
-  {
-   "type": "function",
-   "name": "target",
-   "inputs": [],
-   "outputs": [
-    {
-     "name": "",
-     "type": "address",
-     "internalType": "contract IAgenticCommerce"
-    }
-   ],
-   "stateMutability": "view"
-  },
-  {
-   "type": "function",
-   "name": "transferOwnership",
-   "inputs": [
-    {
-     "name": "newOwner",
-     "type": "address",
-     "internalType": "address"
-    }
-   ],
-   "outputs": [],
-   "stateMutability": "nonpayable"
-  },
-  {
-   "type": "event",
-   "name": "AIVerdict",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "indexed": true,
-     "internalType": "uint256"
-    },
-    {
-     "name": "approved",
-     "type": "bool",
-     "indexed": false,
-     "internalType": "bool"
-    },
-    {
-     "name": "confidenceBP",
-     "type": "uint16",
-     "indexed": false,
-     "internalType": "uint16"
-    },
-    {
-     "name": "evidenceHash",
-     "type": "bytes32",
-     "indexed": false,
-     "internalType": "bytes32"
-    }
-   ],
-   "anonymous": false
-  },
-  {
-   "type": "event",
-   "name": "ConfigUpdated",
-   "inputs": [
-    {
-     "name": "oracle",
-     "type": "address",
-     "indexed": false,
-     "internalType": "address"
-    },
-    {
-     "name": "humanResolver",
-     "type": "address",
-     "indexed": false,
-     "internalType": "address"
-    },
-    {
-     "name": "autoSettleCap",
-     "type": "uint256",
-     "indexed": false,
-     "internalType": "uint256"
-    },
-    {
-     "name": "minConfidenceBP",
-     "type": "uint16",
-     "indexed": false,
-     "internalType": "uint16"
-    }
-   ],
-   "anonymous": false
-  },
-  {
-   "type": "event",
-   "name": "Escalated",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "indexed": true,
-     "internalType": "uint256"
-    },
-    {
-     "name": "reasonHash",
-     "type": "bytes32",
-     "indexed": false,
-     "internalType": "bytes32"
-    }
-   ],
-   "anonymous": false
-  },
-  {
-   "type": "event",
-   "name": "HumanVerdict",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "indexed": true,
-     "internalType": "uint256"
-    },
-    {
-     "name": "approved",
-     "type": "bool",
-     "indexed": false,
-     "internalType": "bool"
-    },
-    {
-     "name": "evidenceHash",
-     "type": "bytes32",
-     "indexed": false,
-     "internalType": "bytes32"
-    }
-   ],
-   "anonymous": false
-  },
-  {
-   "type": "event",
-   "name": "OwnershipTransferred",
-   "inputs": [
-    {
-     "name": "previousOwner",
-     "type": "address",
-     "indexed": true,
-     "internalType": "address"
-    },
-    {
-     "name": "newOwner",
-     "type": "address",
-     "indexed": true,
-     "internalType": "address"
-    }
-   ],
-   "anonymous": false
-  },
-  {
-   "type": "error",
-   "name": "AboveAutoCap",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
-    },
-    {
-     "name": "budget",
-     "type": "uint256",
-     "internalType": "uint256"
-    },
-    {
-     "name": "cap",
-     "type": "uint256",
-     "internalType": "uint256"
-    }
-   ]
-  },
-  {
-   "type": "error",
-   "name": "AlreadyResolved",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
-    }
-   ]
-  },
-  {
-   "type": "error",
-   "name": "BelowConfidence",
-   "inputs": [
-    {
-     "name": "confidenceBP",
-     "type": "uint16",
-     "internalType": "uint16"
-    },
-    {
-     "name": "minimum",
-     "type": "uint16",
-     "internalType": "uint16"
-    }
-   ]
-  },
-  {
-   "type": "error",
-   "name": "JobExpired",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
-    }
-   ]
-  },
-  {
-   "type": "error",
-   "name": "NotEscalatable",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
-    }
-   ]
-  },
-  {
-   "type": "error",
-   "name": "NotEvaluator",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
-    }
-   ]
-  },
-  {
-   "type": "error",
-   "name": "NotHumanResolver",
-   "inputs": []
-  },
-  {
-   "type": "error",
-   "name": "NotOracle",
-   "inputs": []
-  },
-  {
-   "type": "error",
-   "name": "NotOwner",
-   "inputs": []
-  },
-  {
-   "type": "error",
-   "name": "SweepFailed",
-   "inputs": []
-  },
-  {
-   "type": "error",
-   "name": "WrongStatus",
-   "inputs": [
-    {
-     "name": "jobId",
-     "type": "uint256",
-     "internalType": "uint256"
-    },
-    {
-     "name": "status",
-     "type": "uint8",
-     "internalType": "uint8"
-    }
-   ]
-  },
-  {
-   "type": "error",
-   "name": "ZeroAddress",
-   "inputs": []
-  }
- ]
+  ]
 }

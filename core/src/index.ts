@@ -1,5 +1,8 @@
-import { getAddress, type Hex } from "viem";
+import { getAddress, keccak256, toBytes, type Hex } from "viem";
 import "./env.js";
+import { publicClient } from "./chain.js";
+import { evaluationRouterAbi } from "./contracts.js";
+import { envAddress } from "./config.js";
 import {
   loadDeliverable,
   type DeliverableInspection,
@@ -18,6 +21,21 @@ const fixtureMode = args.has("--fixture-job") || dryRun;
 const POLL_INTERVAL_MS = 12_000;
 const FIXTURE_DELIVERABLE_HASH: Hex =
   "0xb2cb7ee28ba629e7834ced57f8edf364a34c7bedb74330adb4f1bea77d1f33f2";
+
+// Mirrors EvaluationRouter.ReviewLane and the dashboard's queue labeling.
+const REVIEW_LANE_HUMAN_ONLY = 1;
+const HUMAN_LANE_REASON = "client requested human review";
+const HUMAN_LANE_REASON_HASH = keccak256(toBytes(HUMAN_LANE_REASON));
+
+async function readReviewLane(jobId: bigint): Promise<number> {
+  const lane = await publicClient.readContract({
+    address: envAddress("ROUTER_ADDRESS"),
+    abi: evaluationRouterAbi,
+    functionName: "lanes",
+    args: [jobId],
+  });
+  return Number(lane);
+}
 
 function jobLog(jobId: bigint, event: string, fields: object = {}): void {
   console.log(
@@ -64,6 +82,39 @@ async function processJob(job: SubmittedJob): Promise<void> {
     budget: job.budget,
     submittedAtBlock: job.submittedAtBlock,
   });
+
+  // Client-chosen review lane, enforced by the router. HumanOnly jobs never
+  // reach the model: escalate straight to the human review queue.
+  if (!fixtureMode && (await readReviewLane(job.id)) === REVIEW_LANE_HUMAN_ONLY) {
+    jobLog(job.id, "human_lane_requested", {});
+    const verdict: Verdict = {
+      approve: false,
+      confidenceBP: 0,
+      reasoning: HUMAN_LANE_REASON,
+      injectionSuspected: false,
+    };
+    const evidence = await writeEvidence({
+      jobId: job.id,
+      verdict,
+      reasonCode: "human_lane_requested",
+      model: "none (model not invoked)",
+      deliverableHash: job.deliverable,
+    });
+    jobLog(job.id, "evidence_written", {
+      evidenceHash: evidence.evidenceHash,
+      path: evidence.path,
+    });
+    await submitDecision({
+      jobId: job.id,
+      action: "escalate",
+      verdict,
+      evidenceHash: HUMAN_LANE_REASON_HASH,
+      dryRun,
+    });
+    jobLog(job.id, "processing_complete");
+    return;
+  }
+
   const deliverable = await loadDeliverable(job.id, job.deliverable);
   jobLog(job.id, "deliverable_loaded", {
     status: deliverable.status,

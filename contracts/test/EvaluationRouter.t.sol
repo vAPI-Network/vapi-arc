@@ -196,6 +196,78 @@ contract EvaluationRouterTest is Test {
         router.submitAIVerdict(JOB, true, 9500, EVIDENCE);
     }
 
+    // ------------------------------------------------------------------ lanes
+
+    address internal constant CLIENT = address(0xC11E47);
+
+    function test_clientSetsHumanOnlyLaneAndAIVerdictReverts() public {
+        vm.prank(CLIENT);
+        router.setLane(JOB, EvaluationRouter.ReviewLane.HumanOnly);
+        assertEq(uint8(router.lanes(JOB)), uint8(EvaluationRouter.ReviewLane.HumanOnly));
+
+        vm.prank(ORACLE);
+        vm.expectRevert(abi.encodeWithSelector(EvaluationRouter.HumanReviewRequired.selector, JOB));
+        router.submitAIVerdict(JOB, true, 9500, EVIDENCE);
+    }
+
+    function test_nonClientCannotSetLane() public {
+        vm.prank(STRANGER);
+        vm.expectRevert(abi.encodeWithSelector(EvaluationRouter.NotClient.selector, JOB));
+        router.setLane(JOB, EvaluationRouter.ReviewLane.HumanOnly);
+    }
+
+    function test_laneLockedAfterResolution() public {
+        vm.prank(ORACLE);
+        router.escalate(JOB, EVIDENCE);
+        vm.prank(CLIENT);
+        vm.expectRevert(abi.encodeWithSelector(EvaluationRouter.LaneLocked.selector, JOB));
+        router.setLane(JOB, EvaluationRouter.ReviewLane.HumanOnly);
+    }
+
+    function test_laneRequiresRouterAsEvaluator() public {
+        _setJob(77, 10e6, 2, STRANGER, block.timestamp + 1 days);
+        vm.prank(CLIENT);
+        vm.expectRevert(abi.encodeWithSelector(EvaluationRouter.NotEvaluator.selector, 77));
+        router.setLane(77, EvaluationRouter.ReviewLane.HumanOnly);
+    }
+
+    function test_laneFlipBackReenablesAIPath() public {
+        vm.startPrank(CLIENT);
+        router.setLane(JOB, EvaluationRouter.ReviewLane.HumanOnly);
+        router.setLane(JOB, EvaluationRouter.ReviewLane.AIAllowed);
+        vm.stopPrank();
+
+        vm.prank(ORACLE);
+        router.submitAIVerdict(JOB, true, 9500, EVIDENCE);
+        assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.AutoCompleted));
+    }
+
+    function test_laneSettableBeforeSubmission() public {
+        _setJob(78, 10e6, 1, address(router), block.timestamp + 1 days);
+        vm.prank(CLIENT);
+        router.setLane(78, EvaluationRouter.ReviewLane.HumanOnly);
+        assertEq(uint8(router.lanes(78)), uint8(EvaluationRouter.ReviewLane.HumanOnly));
+    }
+
+    function test_humanResolveWorksOnHumanOnlyLane() public {
+        vm.prank(CLIENT);
+        router.setLane(JOB, EvaluationRouter.ReviewLane.HumanOnly);
+
+        vm.prank(HUMAN);
+        router.humanResolve(JOB, true, EVIDENCE);
+        assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.HumanCompleted));
+        assertTrue(ac.lastApproved());
+    }
+
+    function test_escalateWorksOnHumanOnlyLane() public {
+        vm.prank(CLIENT);
+        router.setLane(JOB, EvaluationRouter.ReviewLane.HumanOnly);
+
+        vm.prank(ORACLE);
+        router.escalate(JOB, keccak256("client requested human review"));
+        assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.Escalated));
+    }
+
     // ------------------------------------------------------- escalation/human
 
     function test_escalateThenHumanResolve() public {

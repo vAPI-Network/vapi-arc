@@ -1,0 +1,4 @@
+{
+  "content": "Contract summary, final deliverable.\n\nThe service agreement obliges the vendor to return JSON responses carrying \"status\" and \"result\" fields and to reject unauthenticated requests with HTTP 401. Sections 4 and 7 of the underlying agreement qualify both obligations; the client asked for a human reviewer to weigh those qualifications.",
+  "contentHash": "0x6c0b331b9ea1a61ef3e5d163cbe8f1a56b1055844c2829e74bdef27092b3b2b5"
+}

@@ -110,6 +110,7 @@ export type JobRecord = {
 
 export type FeedRow = JobRecord & {
   provenance: "AI auto" | "escalated" | "human" | null;
+  lane: "AI" | "human" | null;
   confidenceBP: number | null;
   statusTxHash: Hash | null;
   verdictTxHash: Hash | null;
@@ -120,6 +121,7 @@ export type ReviewRecord = JobRecord & {
   deliverableHash: Hash | null;
   reasonHash: Hash;
   escalationTxHash: Hash;
+  clientRequested: boolean;
 };
 
 export type ReputationData = {
@@ -138,6 +140,12 @@ function configuredRouterAddress(): Address | null {
   const value = process.env.ROUTER_ADDRESS;
   return value && isAddress(value) ? getAddress(value) : null;
 }
+
+// On-chain marker the worker uses when escalating a HumanOnly-lane job; the
+// review queue labels entries by comparing reason hashes against it.
+export const HUMAN_LANE_REASON_HASH = keccak256(
+  toBytes("client requested human review"),
+);
 
 // Demo job ids pinned via env so the deployed feed still shows the story after
 // those jobs age out of the RECENT_BLOCKS lookback window.
@@ -247,7 +255,7 @@ async function withRpcSlot<T>(fn: () => Promise<T>): Promise<T> {
 // contracts (address + topic0 are OR-filters in eth_getLogs), and routes filter
 // in memory — the ~2 req/s public RPC can't afford one getLogs per event name.
 const AGENTIC_EVENT_NAMES = ["JobSubmitted", "JobCompleted", "JobRejected"];
-const ROUTER_EVENT_NAMES = ["AIVerdict", "Escalated", "HumanVerdict"];
+const ROUTER_EVENT_NAMES = ["AIVerdict", "Escalated", "HumanVerdict", "LaneSet"];
 
 async function sweepLogs(): Promise<ChainEvent[]> {
   const router = configuredRouterAddress();
@@ -479,6 +487,7 @@ function buildFeedRows(
       return {
         ...job,
         provenance,
+        lane: null as FeedRow["lane"],
         confidenceBP,
         statusTxHash: jobEvent?.transactionHash ?? null,
         verdictTxHash: verdictEvent?.transactionHash ?? null,
@@ -496,10 +505,14 @@ export async function getFeedData(): Promise<{
   if (!router) return { configured: false, rows: [] };
 
   return cached(`feed:${router}`, async () => {
-    const [agentic, verdicts] = await Promise.all([
+    const [agentic, routerLogs] = await Promise.all([
       agenticEvents(["JobSubmitted", "JobCompleted", "JobRejected"]),
-      routerEvents(router, ["AIVerdict", "Escalated", "HumanVerdict"]),
+      routerEvents(router, ["AIVerdict", "Escalated", "HumanVerdict", "LaneSet"]),
     ]);
+    const verdicts = routerLogs.filter((e) => e.eventName !== "LaneSet");
+    const laneByJob = latestByJob(
+      routerLogs.filter((e) => e.eventName === "LaneSet"),
+    );
     const ids = [
       ...agentic.map(jobIdFrom).filter((id): id is string => id !== null),
       ...pinnedJobIds(),
@@ -509,6 +522,12 @@ export async function getFeedData(): Promise<{
       if (!sameAddress(job.evaluator, router)) jobs.delete(id);
     }
     const rows = buildFeedRows(jobs, agentic, verdicts);
+    for (const row of rows) {
+      const laneEvent = laneByJob.get(row.id);
+      if (laneEvent !== undefined) {
+        row.lane = Number(laneEvent.args.lane) === 1 ? "human" : "AI";
+      }
+    }
     await backfillProvenance(router, rows);
     return { configured: true, rows };
   });
@@ -599,6 +618,9 @@ export async function getReviewData(): Promise<{
             : null,
         reasonHash: reasonHash as Hash,
         escalationTxHash: escalation.transactionHash,
+        clientRequested:
+          (reasonHash as Hash).toLowerCase() ===
+          HUMAN_LANE_REASON_HASH.toLowerCase(),
       });
     }
 

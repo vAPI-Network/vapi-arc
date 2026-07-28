@@ -30,6 +30,8 @@ interface IERC20Minimal {
 /// - `oracle` is a narrowly-authorized service wallet. The AI judge never holds
 ///   this key; an off-chain deterministic layer validates the model's structured
 ///   verdict before this wallet signs anything.
+/// - The job's client chooses the review lane. `HumanOnly` makes AI settlement
+///   revert at the contract level; the default lane allows the guarded AI path.
 /// - The AI path can only settle jobs whose escrow budget is at or below
 ///   `autoSettleCap` and whose reported confidence meets `minConfidenceBP`, and
 ///   never past job expiry. Everything else must go through `humanResolve`.
@@ -49,6 +51,13 @@ contract EvaluationRouter {
         HumanRejected
     }
 
+    /// Client-chosen evaluation path. AIAllowed (default) permits guarded
+    /// auto-settlement; HumanOnly requires a human verdict.
+    enum ReviewLane {
+        AIAllowed,
+        HumanOnly
+    }
+
     IAgenticCommerce public immutable target;
 
     address public owner;
@@ -62,16 +71,21 @@ contract EvaluationRouter {
 
     mapping(uint256 => Resolution) public resolutions;
     mapping(uint256 => bytes32) public evidence;
+    mapping(uint256 => ReviewLane) public lanes;
 
     event AIVerdict(uint256 indexed jobId, bool approved, uint16 confidenceBP, bytes32 evidenceHash);
     event Escalated(uint256 indexed jobId, bytes32 reasonHash);
     event HumanVerdict(uint256 indexed jobId, bool approved, bytes32 evidenceHash);
+    event LaneSet(uint256 indexed jobId, ReviewLane lane);
     event ConfigUpdated(address oracle, address humanResolver, uint256 autoSettleCap, uint16 minConfidenceBP);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     error NotOwner();
     error NotOracle();
     error NotHumanResolver();
+    error NotClient(uint256 jobId);
+    error LaneLocked(uint256 jobId);
+    error HumanReviewRequired(uint256 jobId);
     error ZeroAddress();
     error AlreadyResolved(uint256 jobId);
     error NotEscalatable(uint256 jobId);
@@ -113,6 +127,19 @@ contract EvaluationRouter {
         minConfidenceBP = minConfidenceBP_;
     }
 
+    // ------------------------------------------------------------------ lanes
+
+    /// The job's client picks the evaluation path. Flippable both ways until
+    /// the router records a resolution for the job.
+    function setLane(uint256 jobId, ReviewLane lane) external {
+        if (resolutions[jobId] != Resolution.None) revert LaneLocked(jobId);
+        IAgenticCommerce.Job memory job = target.getJob(jobId);
+        if (job.evaluator != address(this)) revert NotEvaluator(jobId);
+        if (msg.sender != job.client) revert NotClient(jobId);
+        lanes[jobId] = lane;
+        emit LaneSet(jobId, lane);
+    }
+
     // ---------------------------------------------------------------- verdicts
 
     /// AI path: guarded auto-settlement. Reverts (and therefore leaves no state
@@ -122,6 +149,7 @@ contract EvaluationRouter {
         onlyOracle
     {
         if (resolutions[jobId] != Resolution.None) revert AlreadyResolved(jobId);
+        if (lanes[jobId] == ReviewLane.HumanOnly) revert HumanReviewRequired(jobId);
         if (confidenceBP < minConfidenceBP) revert BelowConfidence(confidenceBP, minConfidenceBP);
 
         IAgenticCommerce.Job memory job = _checkedJob(jobId);

@@ -16,6 +16,7 @@ export type Verdict = z.infer<typeof verdictSchema>;
 export type GateAction = "settle" | "escalate";
 export type ReasonCode =
   | "policy_passed"
+  | "human_lane_requested"
   | "model_output_invalid"
   | "injection_suspected"
   | "confidence_below_threshold"

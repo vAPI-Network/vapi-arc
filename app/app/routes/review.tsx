@@ -135,6 +135,11 @@ export default function Review({
                       <StatusChip status="Escalated" />
                       <span>{job.budgetUsdc} USDC</span>
                     </div>
+                    <small className="muted">
+                      {job.clientRequested
+                        ? "client requested human review"
+                        : "escalated by the gate"}
+                    </small>
                   </div>
                   <div>
                     <span className="data-label">Deliverable hash</span>
