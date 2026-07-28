@@ -11,8 +11,8 @@ source .env
 BUDGET=${BUDGET:-1000000} # 1 USDC (6 decimals)
 EVALUATOR=${EVALUATOR_ADDR:-$ORACLE_ADDR}
 EXPIRES=$(( $(date +%s) + 3600 ))
-DELIVERABLE=$(cast keccak "vapi-trust e2e deliverable $(date +%s)")
-REASON=$(cast keccak "vapi-trust e2e verdict evidence")
+DELIVERABLE=$(cast keccak "vapi trust network e2e deliverable $(date +%s)")
+REASON=$(cast keccak "vapi trust network e2e verdict evidence")
 
 say() { printf '\n== %s\n' "$*"; }
 send() { # send <pk> <sig-and-args...>
@@ -31,7 +31,7 @@ say "createJob(provider=$PROVIDER_ADDR, evaluator=$EVALUATOR)"
 # jobCounter() is racy on the shared testnet contract; read the id from our own receipt.
 JOB_CREATED_TOPIC=0xb0f0239bfdd96453e24733e18bfc24b70d8fadf123dd977473518dd577ee79b9
 JOB_ID=$(cast send "$AGENTIC_COMMERCE" "createJob(address,address,uint256,string,address)" \
-  "$PROVIDER_ADDR" "$EVALUATOR" "$EXPIRES" "vapi-trust E2E: summarize doc per rubric v1" 0x0000000000000000000000000000000000000000 \
+  "$PROVIDER_ADDR" "$EVALUATOR" "$EXPIRES" "vapi trust network e2e: summarize doc per rubric v1" 0x0000000000000000000000000000000000000000 \
   --private-key "$CLIENT_PK" -r "$ARC_RPC_URL" --json \
   | JOB_CREATED_TOPIC="$JOB_CREATED_TOPIC" python3 -c '
 import sys, json, os

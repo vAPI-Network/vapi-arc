@@ -1,5 +1,5 @@
 # @vapi-trust/core
-This worker evaluates submitted ERC-8183 jobs for vAPI Trust on Arc Testnet.
+This worker evaluates submitted ERC-8183 jobs for vAPI Trust Network on Arc Testnet.
 It watches AgenticCommerce submissions addressed to the EvaluationRouter.
 Local deliverables are checked against their on-chain keccak256 commitments.
 The model emits untrusted verdict data and never initiates transactions.

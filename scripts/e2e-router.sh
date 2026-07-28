@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full vAPI Trust demo loop on Arc Testnet — the two-job story:
+# Full vAPI Trust Network demo loop on Arc Testnet — the two-job story:
 #   Job A: create -> fund -> submit -> AI verdict via EvaluationRouter -> escrow completes
 #   Job B: create -> fund -> submit -> oracle escalates -> human resolves -> escrow settles
 # Requires funded wallets (.env) and ROUTER_ADDRESS (deploy first via contracts/script/DeployRouter.s.sol).
@@ -24,7 +24,7 @@ JOB_CREATED_TOPIC=0xb0f0239bfdd96453e24733e18bfc24b70d8fadf123dd977473518dd577ee
 make_job() { # make_job <evaluator> -> prints jobId
   # jobCounter() is racy on the shared testnet contract; read the id from our own receipt.
   cast send "$AGENTIC_COMMERCE" "createJob(address,address,uint256,string,address)" \
-    "$PROVIDER_ADDR" "$1" "$EXPIRES" "vapi-trust demo: summarize brief per rubric v1" \
+    "$PROVIDER_ADDR" "$1" "$EXPIRES" "vapi trust network demo: summarize brief per rubric v1" \
     0x0000000000000000000000000000000000000000 \
     --private-key "$CLIENT_PK" -r "$ARC_RPC_URL" --json \
     | python3 -c '
