@@ -1,3 +1,4 @@
+import { Form, useNavigation } from "react-router";
 import type { Route } from "./+types/review";
 import {
   NetworkPill,
@@ -6,14 +7,46 @@ import {
   StatusChip,
   TxLink,
 } from "~/components/ui";
-import { getReviewData } from "~/lib/chain.server";
+import {
+  getReviewData,
+  hasHumanResolver,
+  submitHumanVerdict,
+} from "~/lib/chain.server";
 
 export async function loader() {
-  return getReviewData();
+  const data = await getReviewData();
+  return { ...data, resolverConfigured: hasHumanResolver() };
 }
 
-export default function Review({ loaderData }: Route.ComponentProps) {
-  const { configured, queue } = loaderData;
+export async function action({ request }: Route.ActionArgs) {
+  const form = await request.formData();
+  const jobId = String(form.get("jobId") ?? "");
+  const decision = String(form.get("decision") ?? "");
+  if (decision !== "approve" && decision !== "reject") {
+    return { ok: false as const, error: "Unknown decision." };
+  }
+  try {
+    const txHash = await submitHumanVerdict({
+      jobId,
+      approve: decision === "approve",
+      note: `human verdict via review UI: ${decision} job ${jobId}`,
+    });
+    return { ok: true as const, jobId, decision, txHash };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Resolution failed.",
+    };
+  }
+}
+
+export default function Review({
+  loaderData,
+  actionData,
+}: Route.ComponentProps) {
+  const { configured, queue, resolverConfigured } = loaderData;
+  const navigation = useNavigation();
+  const resolving = navigation.state === "submitting";
 
   return (
     <>
@@ -30,6 +63,19 @@ export default function Review({ loaderData }: Route.ComponentProps) {
       </div>
 
       {!configured && <SetupBanner />}
+
+      {actionData && actionData.ok && (
+        <div className="notice notice-success" role="status">
+          Job #{actionData.jobId}{" "}
+          {actionData.decision === "approve" ? "approved" : "rejected"} on-chain.{" "}
+          <TxLink hash={actionData.txHash}>resolution tx ↗</TxLink>
+        </div>
+      )}
+      {actionData && !actionData.ok && (
+        <div className="notice notice-error" role="alert">
+          {actionData.error}
+        </div>
+      )}
 
       <section aria-labelledby="queue-heading">
         <div className="section-bar">
@@ -54,9 +100,33 @@ export default function Review({ loaderData }: Route.ComponentProps) {
                     <p className="eyebrow">Job #{job.id}</p>
                     <h2>{job.description || "No description provided"}</h2>
                   </div>
-                  <button type="button" className="button" disabled>
-                    connect resolver wallet
-                  </button>
+                  {resolverConfigured ? (
+                    <Form method="post" className="resolve-actions">
+                      <input type="hidden" name="jobId" value={job.id} />
+                      <button
+                        type="submit"
+                        name="decision"
+                        value="approve"
+                        className="button"
+                        disabled={resolving}
+                      >
+                        {resolving ? "resolving…" : "approve & pay"}
+                      </button>
+                      <button
+                        type="submit"
+                        name="decision"
+                        value="reject"
+                        className="button button-danger"
+                        disabled={resolving}
+                      >
+                        {resolving ? "resolving…" : "reject & refund"}
+                      </button>
+                    </Form>
+                  ) : (
+                    <button type="button" className="button" disabled>
+                      resolver wallet not configured
+                    </button>
+                  )}
                 </div>
                 <div className="review-meta">
                   <div>

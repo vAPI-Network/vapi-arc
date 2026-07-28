@@ -1,16 +1,21 @@
 import {
   createPublicClient,
+  createWalletClient,
   defineChain,
   formatUnits,
   getAbiItem,
   getAddress,
   http,
   isAddress,
+  keccak256,
+  toBytes,
   type Abi,
   type AbiEvent,
   type Address,
   type Hash,
+  type Hex,
 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
 import agenticCommerceArtifact from "../../../adapters/arc/abi/AgenticCommerce.json";
 import evaluationRouterArtifact from "../../../adapters/arc/abi/EvaluationRouter.json";
@@ -132,6 +137,15 @@ export type ReputationData = {
 function configuredRouterAddress(): Address | null {
   const value = process.env.ROUTER_ADDRESS;
   return value && isAddress(value) ? getAddress(value) : null;
+}
+
+// Demo job ids pinned via env so the deployed feed still shows the story after
+// those jobs age out of the RECENT_BLOCKS lookback window.
+function pinnedJobIds(): string[] {
+  return (process.env.DEMO_JOB_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => /^\d+$/.test(value));
 }
 
 export function hasConfiguredRouter(): boolean {
@@ -486,12 +500,58 @@ export async function getFeedData(): Promise<{
       agenticEvents(["JobSubmitted", "JobCompleted", "JobRejected"]),
       routerEvents(router, ["AIVerdict", "Escalated", "HumanVerdict"]),
     ]);
-    const ids = agentic.map(jobIdFrom).filter((id): id is string => id !== null);
+    const ids = [
+      ...agentic.map(jobIdFrom).filter((id): id is string => id !== null),
+      ...pinnedJobIds(),
+    ];
     const jobs = await getJobs(ids);
     for (const [id, job] of jobs) {
       if (!sameAddress(job.evaluator, router)) jobs.delete(id);
     }
-    return { configured: true, rows: buildFeedRows(jobs, agentic, verdicts) };
+    const rows = buildFeedRows(jobs, agentic, verdicts);
+    await backfillProvenance(router, rows);
+    return { configured: true, rows };
+  });
+}
+
+// Router Resolution enum: 1 AutoCompleted, 2 AutoRejected, 3 Escalated,
+// 4 HumanCompleted, 5 HumanRejected. Used for pinned jobs whose verdict
+// events fall outside the log lookback window.
+async function backfillProvenance(
+  router: Address,
+  rows: FeedRow[],
+): Promise<void> {
+  const missing = rows.filter((row) => row.provenance === null);
+  if (missing.length === 0) return;
+  const key = `resolutions:${router}:${missing.map((row) => row.id).join(",")}`;
+
+  const resolutions = await cached(key, () =>
+    withRpcSlot(async () => {
+      const batch = await publicClient.multicall({
+        allowFailure: true,
+        contracts: missing.map((row) => ({
+          address: router,
+          abi: evaluationRouterAbi,
+          functionName: "resolutions",
+          args: [BigInt(row.id)],
+        })),
+      });
+      // Same as getJobs: a rate-limited sub-batch must throw so withRpcSlot
+      // retries, instead of silently leaving rows on "Awaiting verdict".
+      const throttled = batch.find(
+        (result) => result.status !== "success" && isRateLimited(result.error),
+      );
+      if (throttled && throttled.status !== "success") throw throttled.error;
+      return batch;
+    }),
+  );
+
+  resolutions.forEach((result, index) => {
+    if (result.status !== "success") return;
+    const code = Number(result.result);
+    if (code === 1 || code === 2) missing[index].provenance = "AI auto";
+    if (code === 3) missing[index].provenance = "escalated";
+    if (code === 4 || code === 5) missing[index].provenance = "human";
   });
 }
 
@@ -545,6 +605,66 @@ export async function getReviewData(): Promise<{
     queue.sort((a, b) => Number(BigInt(b.id) - BigInt(a.id)));
     return { configured: true, queue };
   });
+}
+
+// --- Human resolver (server-side signing with the demo human wallet) ---
+// Testnet demo setup: HUMAN_PK is a throwaway key. A production deployment
+// would use a connected wallet or Circle user-controlled wallet instead.
+
+export function hasHumanResolver(): boolean {
+  return Boolean(process.env.HUMAN_PK) && configuredRouterAddress() !== null;
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+export async function submitHumanVerdict(input: {
+  jobId: string;
+  approve: boolean;
+  note: string;
+}): Promise<Hash> {
+  const router = configuredRouterAddress();
+  const humanKey = process.env.HUMAN_PK;
+  if (!router || !humanKey) {
+    throw new Error("Human resolver is not configured on this deployment.");
+  }
+  if (!/^\d+$/.test(input.jobId)) {
+    throw new Error("Invalid job id.");
+  }
+
+  const walletClient = createWalletClient({
+    account: privateKeyToAccount(humanKey as Hex),
+    chain: arcTestnet,
+    transport: http(ARC_RPC_URL, { retryCount: 2, retryDelay: 1_000 }),
+  });
+  const hash = await withRpcSlot(() =>
+    walletClient.writeContract({
+      address: router,
+      abi: evaluationRouterAbi,
+      functionName: "humanResolve",
+      args: [BigInt(input.jobId), input.approve, keccak256(toBytes(input.note))],
+    }),
+  );
+
+  // Patient manual receipt poll — the public RPC rate-limits viem's default
+  // waitForTransactionReceipt polling.
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await sleep(3_000);
+    try {
+      const receipt = await publicClient.getTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        throw new Error(`humanResolve reverted (tx ${hash})`);
+      }
+      memoryCache.clear(); // next page load re-reads chain state
+      return hash;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("reverted")) {
+        throw error;
+      }
+      // not mined yet or rate-limited; keep waiting
+    }
+  }
+  throw new Error(`No receipt for humanResolve tx ${hash} after 90s.`);
 }
 
 export async function getReputationData(

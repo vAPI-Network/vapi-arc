@@ -464,6 +464,34 @@ h2 {
   opacity: 0.68;
 }
 
+.button-danger {
+  border-color: color-mix(in srgb, #dc2626 42%, var(--line));
+  color: #dc2626;
+}
+
+.resolve-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.notice {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+
+.notice-success {
+  border-color: color-mix(in srgb, #16a34a 38%, var(--line));
+  background: color-mix(in srgb, #16a34a 7%, var(--surface-subtle));
+}
+
+.notice-error {
+  border-color: color-mix(in srgb, #dc2626 38%, var(--line));
+  background: color-mix(in srgb, #dc2626 7%, var(--surface-subtle));
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
