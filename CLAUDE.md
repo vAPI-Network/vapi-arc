@@ -1,6 +1,6 @@
 # vapi-arc — Agent Guide
 
-Hackathon build for Circle's Arc "Programmable Money" hackathon (Agentic track). **Submit by Sun 2026-08-02** (midpoint, must submit to stay in; final deadline Aug 22; top teams → 8-week accelerator).
+Hackathon build for Circle's Arc "Programmable Money" hackathon via Encode Club (Agentic Economy track). **Real dates (verified from Encode's programme page 2026-07-28):** Checkpoint 1 (project page + idea) was Sun Jul 19; Checkpoint 2 (repo + progress summary) was Sun Jul 26 — both allowed placeholders; registration closes Sat Aug 8; **final submission Sun Aug 9 AoE** = functional MVP on Arc + public repo + 3-min video + **deck**; Demo Day Thu Aug 20; top ~8 teams → 8-week accelerator. (Earlier "submit by Aug 2" assumption was wrong.) Platform locks at deadline — submit early.
 
 **The product:** auditable evaluator-as-a-service for ERC-8183. Our `EvaluationRouter` holds the evaluator seat on Circle's deployed AgenticCommerce contract; a guarded AI judge settles narrow low-risk jobs automatically; uncertain/hostile work routes to a human **before** funds move (settlement is terminal in ERC-8183 — no appeals). Full design + trimmed scope + schedule: `docs/specs/2026-07-27-vapi-trust-design.md` (read it first).
 
@@ -32,8 +32,8 @@ In `.env` (gitignored): all wallet keys, `ROUTER_ADDRESS`, and `CIRCLE_API_KEY` 
 3. ~~Wed: live judge runs~~ ✓ **done early (Mon night)**: full autonomous loop proven on-chain with `claude-sonnet-5` — job 159637 (clean) live-judged approve@9500bp → gate settle → AutoCompleted, provider paid; job 159638 (injection fixture) flagged `injection_suspected` → escalated → human-rejected on-chain. Seeder: `cd core && node scripts/seed-judge-jobs.mjs` (creates funded job pair + deliverable files + rewinds watcher cursor), then `node --import tsx src/index.ts --once`. Evidence records in gitignored `core/data/evidence/`. Note: `claude-sonnet-5` rejects the `temperature` param (removed from judge). Wed now free for: more injection fixtures + judge-prompt hardening if time allows.
 4. Thu: Circle dev-controlled wallets integration (client/provider/judge wallet sets — judging points); wire /review resolve button to human wallet; Railway deploy.
 5. Fri: 10 unattended E2E runs; adversarial review of router; arcscan source verification; **feature freeze Friday night**.
-6. Sat: README trust model (who controls oracle wallet, caps, outage behavior, "auditable evaluator operator" NOT "trustless arbitration"; note Circle's contract is admin-upgradeable) + judging-criteria matrix + roadmap section (dual-chain: Base = VAPI token/x402 home, Arc = 8183 adapter; staked DAO panels later) + 3-min video + submission draft.
-7. Sun Aug 2: dry run, submit via Encode. Nothing else.
+6. Sat: README trust model (who controls oracle wallet, caps, outage behavior, "auditable evaluator operator" NOT "trustless arbitration"; note Circle's contract is admin-upgradeable) + judging-criteria matrix + roadmap section (dual-chain: Base = VAPI token/x402 home, Arc = 8183 adapter; staked DAO panels later) + 3-min video + **deck** + submission draft.
+7. Final week (Aug 3–9): buffer + polish; judging criteria mention Agent Stack / Nanopayments / Paymaster — assess cheap wins; **submit well before Sun Aug 9 AoE** (platform locks). **URGENT human item: register on Encode + create project page NOW** — checkpoints 1 (Jul 19) and 2 (Jul 26) already passed (placeholders were acceptable); email info@encode.club if the platform blocks late checkpoint entries.
 
 ## Conventions
 
