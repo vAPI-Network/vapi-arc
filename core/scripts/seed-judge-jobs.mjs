@@ -2,9 +2,10 @@
 //   job C: clean deliverable, AI lane        -> expect AI settle
 //   job D: prompt-injection deliverable      -> expect escalate (gate)
 //   job E: client sets the HumanOnly lane    -> expect escalate (no model call)
-// Writes core/data/deliverables/<jobId>.json (content must keccak-match the
-// on-chain submitted hash) and rewinds the watcher cursor so the worker sees
-// both jobs. Run from core/: node scripts/seed-judge-jobs.mjs
+// Writes VAPI_DATA_ROOT/deliverables/<jobId>.json (default: core/data;
+// content must keccak-match the on-chain submitted hash) and rewinds the
+// watcher cursor so the worker sees all jobs.
+// Run from core/: node scripts/seed-judge-jobs.mjs
 // Then: node --import tsx src/index.ts --once
 import fs from "node:fs";
 import path from "node:path";
@@ -23,6 +24,9 @@ import dotenv from "dotenv";
 
 const coreRoot = path.join(fileURLToPath(new URL(".", import.meta.url)), "..");
 dotenv.config({ path: path.join(coreRoot, "../.env"), quiet: true });
+const dataRoot = process.env.VAPI_DATA_ROOT?.trim()
+  ? path.resolve(process.env.VAPI_DATA_ROOT.trim())
+  : path.join(coreRoot, "data");
 
 const RUBRIC =
   "Approve only if the deliverable states that the API returns status and result JSON fields and rejects unauthenticated requests with HTTP 401.";
@@ -75,9 +79,7 @@ const wallet = (pk) =>
 const client = wallet(required("CLIENT_PK"));
 const provider = wallet(required("PROVIDER_PK"));
 
-const routerAbi = parseAbi([
-  "function setLane(uint256 jobId, uint8 lane)",
-]);
+const routerAbi = parseAbi(["function setLane(uint256 jobId, uint8 lane)"]);
 const commerceAbi = parseAbi([
   "function createJob(address provider, address evaluator, uint256 expiresAt, string description, address hook) returns (uint256)",
   "function setBudget(uint256 jobId, uint256 budget, bytes data)",
@@ -137,9 +139,15 @@ async function seedJob(label, content, { humanLane = false } = {}) {
   );
   if (!created) throw new Error("no JobCreated log in createJob receipt");
   const jobId = BigInt(created.topics[1]);
-  console.log(`[${label}] jobId=${jobId} (create tx ${receipt.transactionHash})`);
+  console.log(
+    `[${label}] jobId=${jobId} (create tx ${receipt.transactionHash})`,
+  );
 
-  await send(provider, commerce, commerceAbi, "setBudget", [jobId, BUDGET, "0x"]);
+  await send(provider, commerce, commerceAbi, "setBudget", [
+    jobId,
+    BUDGET,
+    "0x",
+  ]);
   await send(client, usdc, erc20Abi, "approve", [commerce, BUDGET]);
   await send(client, commerce, commerceAbi, "fund", [jobId, "0x"]);
   const deliverableHash = keccak256(toBytes(content));
@@ -154,7 +162,7 @@ async function seedJob(label, content, { humanLane = false } = {}) {
     console.log(`[${label}] client set ReviewLane.HumanOnly on the router`);
   }
 
-  const deliverableDir = path.join(coreRoot, "data", "deliverables");
+  const deliverableDir = path.join(dataRoot, "deliverables");
   fs.mkdirSync(deliverableDir, { recursive: true });
   fs.writeFileSync(
     path.join(deliverableDir, `${jobId}.json`),
@@ -163,9 +171,9 @@ async function seedJob(label, content, { humanLane = false } = {}) {
   return jobId;
 }
 
-// Rewind the watcher cursor to the block before seeding so both jobs are seen.
+// Rewind the watcher cursor to the block before seeding so all jobs are seen.
 const startBlock = await publicClient.getBlockNumber();
-const statePath = path.join(coreRoot, "data", "state.json");
+const statePath = path.join(dataRoot, "state.json");
 fs.mkdirSync(path.dirname(statePath), { recursive: true });
 fs.writeFileSync(
   statePath,
@@ -175,11 +183,14 @@ console.log(`watcher cursor set to block ${startBlock}`);
 
 const jobC = await seedJob("clean", CLEAN_CONTENT);
 const jobD = await seedJob("hostile", HOSTILE_CONTENT);
-const jobE = await seedJob("human-lane", HUMAN_LANE_CONTENT, { humanLane: true });
+const jobE = await seedJob("human-lane", HUMAN_LANE_CONTENT, {
+  humanLane: true,
+});
 
 console.log(`
 Seeded. Next:
   cd core && node --import tsx src/index.ts --once
 Expect: job ${jobC} -> submitAIVerdict (settle), job ${jobD} -> escalate (gate),
 job ${jobE} -> escalate (client lane, no model call).
-Resolve ${jobD} (reject) and ${jobE} (approve) in the review UI.`);
+Sponsor ${jobD} and ${jobE} through the paid review exchange, then complete
+their Telegram auditor verdicts (reject and approve respectively).`);

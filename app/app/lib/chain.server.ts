@@ -1,6 +1,5 @@
 import {
   createPublicClient,
-  createWalletClient,
   defineChain,
   formatUnits,
   getAbiItem,
@@ -13,9 +12,7 @@ import {
   type AbiEvent,
   type Address,
   type Hash,
-  type Hex,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 
 import agenticCommerceArtifact from "../../../adapters/arc/abi/AgenticCommerce.json";
 import evaluationRouterArtifact from "../../../adapters/arc/abi/EvaluationRouter.json";
@@ -64,24 +61,42 @@ export const publicClient = createPublicClient({
 
 type CacheEntry<T> = {
   expiresAt: number;
+  settled: boolean;
   value: Promise<T>;
 };
 
 const memoryCache = new Map<string, CacheEntry<unknown>>();
 
-export function cached<T>(
-  key: string,
-  producer: () => Promise<T>,
-): Promise<T> {
+export function cached<T>(key: string, producer: () => Promise<T>): Promise<T> {
   const now = Date.now();
   const existing = memoryCache.get(key) as CacheEntry<T> | undefined;
-  if (existing && existing.expiresAt > now) return existing.value;
+  if (existing && (!existing.settled || existing.expiresAt > now)) {
+    return existing.value;
+  }
 
-  const value = producer().catch((error) => {
-    memoryCache.delete(key);
-    throw error;
-  });
-  memoryCache.set(key, { expiresAt: now + CACHE_TTL_MS, value });
+  const value = producer();
+  const entry: CacheEntry<T> = {
+    expiresAt: Number.POSITIVE_INFINITY,
+    settled: false,
+    value,
+  };
+  memoryCache.set(key, entry);
+  void value.then(
+    () => {
+      const current = memoryCache.get(key);
+      if (current?.value === value) {
+        current.settled = true;
+        current.expiresAt = Date.now() + CACHE_TTL_MS;
+      }
+    },
+    () => {
+      // Only remove this exact request. A late rejection must never evict a
+      // newer value that another caller installed for the same cache key.
+      if (memoryCache.get(key)?.value === value) {
+        memoryCache.delete(key);
+      }
+    },
+  );
   return value;
 }
 
@@ -255,7 +270,12 @@ async function withRpcSlot<T>(fn: () => Promise<T>): Promise<T> {
 // contracts (address + topic0 are OR-filters in eth_getLogs), and routes filter
 // in memory — the ~2 req/s public RPC can't afford one getLogs per event name.
 const AGENTIC_EVENT_NAMES = ["JobSubmitted", "JobCompleted", "JobRejected"];
-const ROUTER_EVENT_NAMES = ["AIVerdict", "Escalated", "HumanVerdict", "LaneSet"];
+const ROUTER_EVENT_NAMES = [
+  "AIVerdict",
+  "Escalated",
+  "HumanVerdict",
+  "LaneSet",
+];
 
 async function sweepLogs(): Promise<ChainEvent[]> {
   const router = configuredRouterAddress();
@@ -283,6 +303,8 @@ async function sweepLogs(): Promise<ChainEvent[]> {
     ];
     const logs: ChainEvent[] = [];
 
+    // Intentionally sequence block chunks: Arc's public RPC rate-limits burst
+    // eth_getLogs traffic. withRpcSlot also caps concurrency across requests.
     for (
       let chunkStart = fromBlock;
       chunkStart <= toBlock;
@@ -507,7 +529,12 @@ export async function getFeedData(): Promise<{
   return cached(`feed:${router}`, async () => {
     const [agentic, routerLogs] = await Promise.all([
       agenticEvents(["JobSubmitted", "JobCompleted", "JobRejected"]),
-      routerEvents(router, ["AIVerdict", "Escalated", "HumanVerdict", "LaneSet"]),
+      routerEvents(router, [
+        "AIVerdict",
+        "Escalated",
+        "HumanVerdict",
+        "LaneSet",
+      ]),
     ]);
     const verdicts = routerLogs.filter((e) => e.eventName !== "LaneSet");
     const laneByJob = latestByJob(
@@ -627,66 +654,6 @@ export async function getReviewData(): Promise<{
     queue.sort((a, b) => Number(BigInt(b.id) - BigInt(a.id)));
     return { configured: true, queue };
   });
-}
-
-// --- Human resolver (server-side signing with the demo human wallet) ---
-// Testnet demo setup: HUMAN_PK is a throwaway key. A production deployment
-// would use a connected wallet or Circle user-controlled wallet instead.
-
-export function hasHumanResolver(): boolean {
-  return Boolean(process.env.HUMAN_PK) && configuredRouterAddress() !== null;
-}
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-export async function submitHumanVerdict(input: {
-  jobId: string;
-  approve: boolean;
-  note: string;
-}): Promise<Hash> {
-  const router = configuredRouterAddress();
-  const humanKey = process.env.HUMAN_PK;
-  if (!router || !humanKey) {
-    throw new Error("Human resolver is not configured on this deployment.");
-  }
-  if (!/^\d+$/.test(input.jobId)) {
-    throw new Error("Invalid job id.");
-  }
-
-  const walletClient = createWalletClient({
-    account: privateKeyToAccount(humanKey as Hex),
-    chain: arcTestnet,
-    transport: http(ARC_RPC_URL, { retryCount: 2, retryDelay: 1_000 }),
-  });
-  const hash = await withRpcSlot(() =>
-    walletClient.writeContract({
-      address: router,
-      abi: evaluationRouterAbi,
-      functionName: "humanResolve",
-      args: [BigInt(input.jobId), input.approve, keccak256(toBytes(input.note))],
-    }),
-  );
-
-  // Patient manual receipt poll — the public RPC rate-limits viem's default
-  // waitForTransactionReceipt polling.
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    await sleep(3_000);
-    try {
-      const receipt = await publicClient.getTransactionReceipt({ hash });
-      if (receipt.status !== "success") {
-        throw new Error(`humanResolve reverted (tx ${hash})`);
-      }
-      memoryCache.clear(); // next page load re-reads chain state
-      return hash;
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("reverted")) {
-        throw error;
-      }
-      // not mined yet or rate-limited; keep waiting
-    }
-  }
-  throw new Error(`No receipt for humanResolve tx ${hash} after 90s.`);
 }
 
 export async function getReputationData(

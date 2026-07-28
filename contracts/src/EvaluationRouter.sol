@@ -72,10 +72,23 @@ contract EvaluationRouter {
     mapping(uint256 => Resolution) public resolutions;
     mapping(uint256 => bytes32) public evidence;
     mapping(uint256 => ReviewLane) public lanes;
+    /// Human-review provenance. These fields are populated only for terminal
+    /// human resolutions; the resolver attests that the off-chain payout was
+    /// completed before settlement.
+    mapping(uint256 => address) public reviewers;
+    mapping(uint256 => uint256) public reviewerRewards;
+    mapping(uint256 => bytes32) public reviewerPayouts;
 
     event AIVerdict(uint256 indexed jobId, bool approved, uint16 confidenceBP, bytes32 evidenceHash);
     event Escalated(uint256 indexed jobId, bytes32 reasonHash);
-    event HumanVerdict(uint256 indexed jobId, bool approved, bytes32 evidenceHash);
+    event HumanVerdict(
+        uint256 indexed jobId,
+        address indexed reviewer,
+        bool approved,
+        uint256 reward,
+        bytes32 evidenceHash,
+        bytes32 payoutTxHash
+    );
     event LaneSet(uint256 indexed jobId, ReviewLane lane);
     event ConfigUpdated(address oracle, address humanResolver, uint256 autoSettleCap, uint16 minConfidenceBP);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -83,6 +96,8 @@ contract EvaluationRouter {
     error NotOwner();
     error NotOracle();
     error NotHumanResolver();
+    error InvalidReviewer();
+    error MissingPayoutTransaction();
     error NotClient(uint256 jobId);
     error LaneLocked(uint256 jobId);
     error HumanReviewRequired(uint256 jobId);
@@ -118,7 +133,9 @@ contract EvaluationRouter {
         uint256 autoSettleCap_,
         uint16 minConfidenceBP_
     ) {
-        if (target_ == address(0) || oracle_ == address(0) || humanResolver_ == address(0)) revert ZeroAddress();
+        if (target_ == address(0) || oracle_ == address(0) || humanResolver_ == address(0)) {
+            revert ZeroAddress();
+        }
         target = IAgenticCommerce(target_);
         owner = msg.sender;
         oracle = oracle_;
@@ -172,17 +189,31 @@ contract EvaluationRouter {
     }
 
     /// Human fallback: allowed from None or Escalated, exempt from cap and
-    /// confidence gates. Still pre-settlement — settlement remains terminal.
-    function humanResolve(uint256 jobId, bool approve, bytes32 evidenceHash) external onlyHumanResolver {
+    /// confidence gates. `reviewer`, `reward`, and `payoutTxHash` are
+    /// resolver-attested payout provenance; this contract does not custody the
+    /// reviewer reward. Still pre-settlement — settlement remains terminal.
+    function humanResolve(
+        uint256 jobId,
+        address reviewer,
+        bool approve,
+        uint256 reward,
+        bytes32 evidenceHash,
+        bytes32 payoutTxHash
+    ) external onlyHumanResolver {
         Resolution current = resolutions[jobId];
         if (current != Resolution.None && current != Resolution.Escalated) revert AlreadyResolved(jobId);
+        if (reviewer == address(0)) revert InvalidReviewer();
+        if (reward != 0 && payoutTxHash == bytes32(0)) revert MissingPayoutTransaction();
 
         _checkedJob(jobId);
 
         resolutions[jobId] = approve ? Resolution.HumanCompleted : Resolution.HumanRejected;
         evidence[jobId] = evidenceHash;
+        reviewers[jobId] = reviewer;
+        reviewerRewards[jobId] = reward;
+        reviewerPayouts[jobId] = payoutTxHash;
         _settle(jobId, approve, evidenceHash);
-        emit HumanVerdict(jobId, approve, evidenceHash);
+        emit HumanVerdict(jobId, reviewer, approve, reward, evidenceHash, payoutTxHash);
     }
 
     // ---------------------------------------------------------------- internal

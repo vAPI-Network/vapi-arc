@@ -74,13 +74,16 @@ contract EvaluationRouterTest is Test {
 
     address internal constant ORACLE = address(0xA11CE);
     address internal constant HUMAN = address(0xBEEF);
+    address internal constant REVIEWER = address(0xA0D170);
     address internal constant STRANGER = address(0xBAD);
 
     uint256 internal constant CAP = 100e6; // 100 USDC
     uint16 internal constant MIN_CONF = 8000; // 80%
 
     uint256 internal constant JOB = 42;
+    uint256 internal constant REWARD = 200_000; // 0.20 USDC
     bytes32 internal constant EVIDENCE = keccak256("evidence-record-v1");
+    bytes32 internal constant PAYOUT_TX = keccak256("reviewer-payout-transaction");
 
     function setUp() public {
         ac = new MockAgenticCommerce();
@@ -116,7 +119,7 @@ contract EvaluationRouterTest is Test {
     function test_onlyHumanResolverCanHumanResolve() public {
         vm.prank(STRANGER);
         vm.expectRevert(EvaluationRouter.NotHumanResolver.selector);
-        router.humanResolve(JOB, true, EVIDENCE);
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
     }
 
     function test_onlyOracleCanEscalate() public {
@@ -254,8 +257,12 @@ contract EvaluationRouterTest is Test {
         router.setLane(JOB, EvaluationRouter.ReviewLane.HumanOnly);
 
         vm.prank(HUMAN);
-        router.humanResolve(JOB, true, EVIDENCE);
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
         assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.HumanCompleted));
+        assertEq(router.evidence(JOB), EVIDENCE);
+        assertEq(router.reviewers(JOB), REVIEWER);
+        assertEq(router.reviewerRewards(JOB), REWARD);
+        assertEq(router.reviewerPayouts(JOB), PAYOUT_TX);
         assertTrue(ac.lastApproved());
     }
 
@@ -276,9 +283,49 @@ contract EvaluationRouterTest is Test {
         assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.Escalated));
 
         vm.prank(HUMAN);
-        router.humanResolve(JOB, false, EVIDENCE);
+        router.humanResolve(JOB, REVIEWER, false, REWARD, EVIDENCE, PAYOUT_TX);
         assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.HumanRejected));
+        assertEq(router.evidence(JOB), EVIDENCE);
+        assertEq(router.reviewers(JOB), REVIEWER);
+        assertEq(router.reviewerRewards(JOB), REWARD);
+        assertEq(router.reviewerPayouts(JOB), PAYOUT_TX);
         assertFalse(ac.lastApproved());
+    }
+
+    function test_humanResolveEmitsPayoutProvenance() public {
+        vm.expectEmit(true, true, false, true, address(router));
+        emit EvaluationRouter.HumanVerdict(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
+
+        vm.prank(HUMAN);
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
+    }
+
+    function test_humanResolveRejectsZeroReviewer() public {
+        vm.prank(HUMAN);
+        vm.expectRevert(EvaluationRouter.InvalidReviewer.selector);
+        router.humanResolve(JOB, address(0), true, REWARD, EVIDENCE, PAYOUT_TX);
+
+        assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.None));
+        assertEq(router.reviewers(JOB), address(0));
+    }
+
+    function test_humanResolveRejectsMissingPaidReviewTransaction() public {
+        vm.prank(HUMAN);
+        vm.expectRevert(EvaluationRouter.MissingPayoutTransaction.selector);
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, bytes32(0));
+
+        assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.None));
+        assertEq(router.reviewerRewards(JOB), 0);
+    }
+
+    function test_zeroRewardAllowsNoPayoutTransaction() public {
+        vm.prank(HUMAN);
+        router.humanResolve(JOB, REVIEWER, true, 0, EVIDENCE, bytes32(0));
+
+        assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.HumanCompleted));
+        assertEq(router.reviewers(JOB), REVIEWER);
+        assertEq(router.reviewerRewards(JOB), 0);
+        assertEq(router.reviewerPayouts(JOB), bytes32(0));
     }
 
     function test_aiVerdictBlockedAfterEscalation() public {
@@ -300,23 +347,30 @@ contract EvaluationRouterTest is Test {
     function test_humanResolveExemptFromCapConfidenceAndExpiry() public {
         _setJob(JOB, CAP + 1_000e6, 2, address(router), block.timestamp);
         vm.prank(HUMAN);
-        router.humanResolve(JOB, true, EVIDENCE);
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
         assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.HumanCompleted));
     }
 
     function test_humanResolveReplayBlocked() public {
         vm.prank(HUMAN);
-        router.humanResolve(JOB, true, EVIDENCE);
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
         vm.prank(HUMAN);
         vm.expectRevert(abi.encodeWithSelector(EvaluationRouter.AlreadyResolved.selector, JOB));
-        router.humanResolve(JOB, false, EVIDENCE);
+        router.humanResolve(JOB, REVIEWER, false, REWARD, EVIDENCE, PAYOUT_TX);
     }
 
     function test_humanResolveStillChecksEvaluatorAndStatus() public {
         _setJob(JOB, 10e6, 3, address(router), block.timestamp + 1 days);
         vm.prank(HUMAN);
         vm.expectRevert(abi.encodeWithSelector(EvaluationRouter.WrongStatus.selector, JOB, uint8(3)));
-        router.humanResolve(JOB, true, EVIDENCE);
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
+    }
+
+    function test_humanResolveStillRequiresRouterAsEvaluator() public {
+        _setJob(JOB, 10e6, 2, STRANGER, block.timestamp + 1 days);
+        vm.prank(HUMAN);
+        vm.expectRevert(abi.encodeWithSelector(EvaluationRouter.NotEvaluator.selector, JOB));
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
     }
 
     // ------------------------------------------------- external-call failure
@@ -329,6 +383,28 @@ contract EvaluationRouterTest is Test {
         // State must be untouched: the job can still be resolved later.
         assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.None));
         assertEq(router.evidence(JOB), bytes32(0));
+    }
+
+    function test_targetRevertRollsBackHumanProvenance() public {
+        ac.setRevertOnSettle(true);
+        vm.prank(HUMAN);
+        vm.expectRevert(bytes("settle reverted"));
+        router.humanResolve(JOB, REVIEWER, true, REWARD, EVIDENCE, PAYOUT_TX);
+
+        assertEq(uint8(router.resolutions(JOB)), uint8(EvaluationRouter.Resolution.None));
+        assertEq(router.evidence(JOB), bytes32(0));
+        assertEq(router.reviewers(JOB), address(0));
+        assertEq(router.reviewerRewards(JOB), 0);
+        assertEq(router.reviewerPayouts(JOB), bytes32(0));
+    }
+
+    function test_aiResolutionLeavesHumanProvenanceEmpty() public {
+        vm.prank(ORACLE);
+        router.submitAIVerdict(JOB, true, 9500, EVIDENCE);
+
+        assertEq(router.reviewers(JOB), address(0));
+        assertEq(router.reviewerRewards(JOB), 0);
+        assertEq(router.reviewerPayouts(JOB), bytes32(0));
     }
 
     // ------------------------------------------------------------------ config

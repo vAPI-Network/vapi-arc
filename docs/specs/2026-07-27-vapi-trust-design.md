@@ -1,5 +1,9 @@
 # Arc hackathon: vAPI EvaluationRouter — auditable evaluator-as-a-service for ERC-8183 (submit by Sun Aug 2)
 
+> **Historical design record.** This document is superseded by the
+> [Paid Human Review Exchange](./2026-07-28-paid-human-review-exchange.md)
+> specification and does not describe the current shipped architecture.
+
 ## Context
 
 Circle's Arc "Programmable Money" hackathon (Agentic track; midpoint extended to **Sun Aug 2** — must submit to stay in; final deadline Aug 22; top teams → 8-week accelerator). Judged on: working MVP deployed on Arc, **quality of execution over complexity**, use of Circle tools, commercialization. Team context: effectively one builder + AI agents, 6 days. VAPI token launches on **Base** (vAPI/ETH) — zero token surface in this submission; company positioning "trust layer of the agent economy" is the vision, not the midpoint claim.

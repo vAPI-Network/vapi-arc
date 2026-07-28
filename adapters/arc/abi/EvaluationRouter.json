@@ -91,12 +91,27 @@
           "internalType": "uint256"
         },
         {
+          "name": "reviewer",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
           "name": "approve",
           "type": "bool",
           "internalType": "bool"
         },
         {
+          "name": "reward",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
           "name": "evidenceHash",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "payoutTxHash",
           "type": "bytes32",
           "internalType": "bytes32"
         }
@@ -190,6 +205,63 @@
           "name": "",
           "type": "uint8",
           "internalType": "enum EvaluationRouter.Resolution"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "reviewerPayouts",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "reviewerRewards",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "reviewers",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
         }
       ],
       "stateMutability": "view"
@@ -404,13 +476,31 @@
           "internalType": "uint256"
         },
         {
+          "name": "reviewer",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
           "name": "approved",
           "type": "bool",
           "indexed": false,
           "internalType": "bool"
         },
         {
+          "name": "reward",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
           "name": "evidenceHash",
+          "type": "bytes32",
+          "indexed": false,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "payoutTxHash",
           "type": "bytes32",
           "indexed": false,
           "internalType": "bytes32"
@@ -517,6 +607,11 @@
     },
     {
       "type": "error",
+      "name": "InvalidReviewer",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "JobExpired",
       "inputs": [
         {
@@ -536,6 +631,11 @@
           "internalType": "uint256"
         }
       ]
+    },
+    {
+      "type": "error",
+      "name": "MissingPayoutTransaction",
+      "inputs": []
     },
     {
       "type": "error",

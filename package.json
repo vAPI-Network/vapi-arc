@@ -2,8 +2,15 @@
   "name": "vapi-trust",
   "private": true,
   "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": "22.x"
+  },
   "workspaces": [
     "core",
     "app"
-  ]
+  ],
+  "devDependencies": {
+    "railway": "3.6.0",
+    "tsx": "4.22.3"
+  }
 }

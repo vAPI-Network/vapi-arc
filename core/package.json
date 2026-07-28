@@ -7,16 +7,28 @@
     "typecheck": "tsc --noEmit",
     "watch": "tsx src/index.ts",
     "judge-once": "tsx src/index.ts --once",
-    "dry-run": "tsx src/index.ts --once --dry-run"
+    "dry-run": "tsx src/index.ts --once --dry-run",
+    "review-server": "tsx src/review-server.ts",
+    "reviewer:add": "tsx src/reviewer-cli.ts add",
+    "reviewer:list": "tsx src/reviewer-cli.ts list",
+    "reviewer:enable": "tsx src/reviewer-cli.ts enable",
+    "reviewer:disable": "tsx src/reviewer-cli.ts disable",
+    "test": "tsx --test src/**/*.test.ts src/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.110.0",
     "@circle-fin/developer-controlled-wallets": "^10.8.0",
+    "@circle-fin/x402-batching": "^3.2.0",
+    "@x402/evm": "^2.20.0",
+    "better-sqlite3": "12.4.1",
     "dotenv": "17.4.2",
+    "express": "^5.2.1",
     "viem": "2.48.8",
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/express": "^5.0.6",
     "@types/node": "22.19.17",
     "tsx": "4.22.3",
     "typescript": "5.9.3"

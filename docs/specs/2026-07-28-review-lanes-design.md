@@ -1,5 +1,9 @@
 # Review lanes: client-chosen evaluation path, enforced on-chain
 
+> **Historical design record.** This document is superseded by the
+> [Paid Human Review Exchange](./2026-07-28-paid-human-review-exchange.md)
+> specification and retains the earlier review-lane rollout for context only.
+
 Approved 2026-07-28. Repositions vAPI Trust Network as the trust layer for
 escrowed agentic work with a client-chosen review lane. The guarded AI judge
 becomes one lane, not the product identity.
