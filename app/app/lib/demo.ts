@@ -172,6 +172,12 @@ export const EMPTY_TRANSACTIONS: DemoTransactions = {
   escrowRefund: null,
 };
 
+const DEMO_TIME_FORMATTER = new Intl.DateTimeFormat("en", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
 export function isDemoRunTerminal(run: DemoRun): boolean {
   return (
     run.capabilities.isTerminal ||
@@ -244,11 +250,7 @@ export function formatDemoTime(value: string | null): string {
   if (!value) return "Pending";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  }).format(date);
+  return DEMO_TIME_FORMATTER.format(date);
 }
 
 export function formatUsdcAmount(value: string): string {

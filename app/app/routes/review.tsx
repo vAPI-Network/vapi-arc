@@ -8,8 +8,8 @@ import {
   StatusChip,
   TxLink,
 } from "~/components/ui";
-import { getReviewData, type ReviewRecord } from "~/lib/chain.server";
 import {
+  type DashboardReviewRecord,
   formatReviewTime,
   formatUsdcBaseUnits,
   isTerminalReviewState,
@@ -17,21 +17,31 @@ import {
   type ReviewOrder,
   type ReviewOrderEvent,
 } from "~/lib/review-service";
-import { getInternalReviewOrders } from "~/lib/review-service.server";
+import {
+  getDashboardChainSnapshot,
+  getInternalReviewOrders,
+} from "~/lib/review-service.server";
 
 export async function loader() {
-  const [chainResult, reviewService] = await Promise.all([
-    getReviewData()
-      .then((data) => ({ data, error: null }))
-      .catch(() => ({
-        data: { configured: true, queue: [] as ReviewRecord[] },
-        error: "Arc Testnet RPC is temporarily unavailable.",
-      })),
+  const [snapshotResult, reviewService] = await Promise.all([
+    getDashboardChainSnapshot(),
     getInternalReviewOrders(),
   ]);
+  const snapshot = snapshotResult.ok ? snapshotResult.data : null;
+  const chainError = !snapshot
+    ? snapshotResult.ok
+      ? "The Arc evidence snapshot is unavailable."
+      : snapshotResult.message
+    : snapshot.status === "stale" || snapshot.status === "degraded"
+      ? snapshot.lastError || "The Arc evidence snapshot is stale."
+      : snapshot.status === "syncing"
+        ? "The Arc evidence index is completing its first background pass."
+        : null;
   return {
-    ...chainResult.data,
-    chainError: chainResult.error,
+    configured: snapshot?.configured ?? true,
+    queue: snapshot?.reviewQueue ?? ([] as DashboardReviewRecord[]),
+    snapshot,
+    chainError,
     reviewService,
   };
 }
@@ -215,7 +225,7 @@ function ReviewOrderCard({
   job,
 }: {
   order: ReviewOrder;
-  job: ReviewRecord | undefined;
+  job: DashboardReviewRecord | undefined;
 }) {
   const evidenceUrl = externalUrl(order.evidenceUrl);
   const exceptional =
@@ -391,10 +401,13 @@ function ReviewOrderCard({
               {order.escalationReasonCode}
             </small>
           )}
-          {job && (
+          {job?.escalationTxHash && (
             <div>
               <TxLink hash={job.escalationTxHash}>escalation tx ↗</TxLink>
             </div>
+          )}
+          {job && !job.escalationTxHash && (
+            <span className="muted">Receipt outside indexed range</span>
           )}
         </div>
       </div>
@@ -411,7 +424,7 @@ function UnsponsoredJob({
   job,
   sponsorshipKnown,
 }: {
-  job: ReviewRecord;
+  job: DashboardReviewRecord;
   sponsorshipKnown: boolean;
 }) {
   return (
@@ -452,7 +465,11 @@ function UnsponsoredJob({
           <span className="data-label">Reason / receipt</span>
           <ShortHash value={job.reasonHash} />
           <div>
-            <TxLink hash={job.escalationTxHash}>escalation tx ↗</TxLink>
+            {job.escalationTxHash ? (
+              <TxLink hash={job.escalationTxHash}>escalation tx ↗</TxLink>
+            ) : (
+              <span className="muted">Receipt outside indexed range</span>
+            )}
           </div>
         </div>
       </div>
@@ -461,7 +478,8 @@ function UnsponsoredJob({
 }
 
 export default function Review({ loaderData }: Route.ComponentProps) {
-  const { configured, queue, chainError, reviewService } = loaderData;
+  const { configured, queue, snapshot, chainError, reviewService } = loaderData;
+  const queueKnown = Boolean(snapshot?.indexedAt);
   const orders = reviewService.ok ? reviewService.data : [];
   const queueByJob = new Map(queue.map((job) => [job.id, job]));
   const orderedJobIds = new Set(orders.map((order) => order.jobId));
@@ -610,11 +628,14 @@ export default function Review({ loaderData }: Route.ComponentProps) {
               : "On-chain escalation queue"}
           </h2>
           <p>
-            {unsponsored.length} unresolved on-chain escalation
-            {unsponsored.length === 1 ? "" : "s"}
+            {queueKnown
+              ? `${unsponsored.length} unresolved on-chain escalation${
+                  unsponsored.length === 1 ? "" : "s"
+                }`
+              : "Arc queue status unavailable"}
           </p>
         </div>
-        {unsponsored.length === 0 ? (
+        {queueKnown && unsponsored.length === 0 ? (
           <div className="empty-state empty-state-compact">
             <h2>No unpaid escalations</h2>
             <p>
@@ -622,7 +643,7 @@ export default function Review({ loaderData }: Route.ComponentProps) {
               no jobs awaiting human review.
             </p>
           </div>
-        ) : (
+        ) : queueKnown ? (
           <div className="cards">
             {unsponsored.map((job) => (
               <UnsponsoredJob
@@ -631,6 +652,14 @@ export default function Review({ loaderData }: Route.ComponentProps) {
                 sponsorshipKnown={reviewService.ok}
               />
             ))}
+          </div>
+        ) : (
+          <div className="empty-state empty-state-compact">
+            <h2>Queue status unavailable</h2>
+            <p>
+              The dashboard will not claim that the queue is empty until a
+              persisted Arc snapshot is available.
+            </p>
           </div>
         )}
       </section>

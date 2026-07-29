@@ -184,6 +184,33 @@ jobs:
         run: |
           set -euo pipefail
 
+          snapshot=""
+          snapshot_healthy="false"
+          for attempt in {1..18}; do
+            snapshot="$(curl --fail --silent --show-error \
+              --retry 2 --retry-delay 2 --retry-all-errors \
+              --header "Authorization: Bearer ${REVIEW_INTERNAL_TOKEN}" \
+              "${REVIEW_URL}/internal/dashboard-chain-snapshot")"
+            snapshot_status="$(jq -r '.status' <<<"$snapshot")"
+            if [[ "$(jq -r '.version' <<<"$snapshot")" == "1" &&
+                  "$(jq -r '.configured' <<<"$snapshot")" == "true" &&
+                  "$(jq -r '.indexedAt // empty' <<<"$snapshot")" != "" &&
+                  "$(jq -r '.latestBlock // empty' <<<"$snapshot")" != "" &&
+                  "$snapshot_status" =~ ^(ready|stale|degraded)$ ]]; then
+              snapshot_healthy="true"
+              break
+            fi
+            if [[ "$attempt" -lt 18 ]]; then
+              sleep 5
+            fi
+          done
+          if [[ "$snapshot_healthy" != "true" ]]; then
+            jq '{version, configured, status, indexedAt, latestBlock, lastAttemptAt, lastError}' \
+              <<<"$snapshot"
+            echo "::error::Durable Arc dashboard snapshot did not complete an initial verified pass"
+            exit 1
+          fi
+
           readiness="$(curl --fail --silent --show-error \
             --retry 8 --retry-delay 3 --retry-all-errors \
             --header "Authorization: Bearer ${REVIEW_INTERNAL_TOKEN}" \
@@ -229,6 +256,27 @@ jobs:
           curl --fail --silent --show-error \
             --retry 8 --retry-delay 3 --retry-all-errors \
             "${WEB_URL}/health/demo" >/dev/null
+
+          measure_ttfb() {
+            local route="$1"
+            local threshold="$2"
+            local seconds
+            seconds="$(curl --fail --silent --show-error \
+              --max-time 5 \
+              --output /dev/null \
+              --write-out '%{time_starttransfer}' \
+              "${WEB_URL}${route}")"
+            if ! awk -v actual="$seconds" -v maximum="$threshold" \
+              'BEGIN { exit !(actual <= maximum) }'; then
+              echo "::error::${route} TTFB was ${seconds}s; expected <= ${threshold}s"
+              exit 1
+            fi
+            echo "${route} TTFB: ${seconds}s"
+          }
+
+          measure_ttfb "/" "2.5"
+          measure_ttfb "/review" "2.5"
+          measure_ttfb "/demo" "2.5"
 
   summary:
     name: Deployment summary

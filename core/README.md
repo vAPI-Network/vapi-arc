@@ -120,9 +120,13 @@ pnpm -C core reviewer:disable --id <reviewer-id>
 
 The free public API includes `/v1/review-orders/:id`,
 `/v1/evidence/:evidenceHash`, and `/v1/reviewers/:address`. The dashboard uses
-`GET /internal/review-orders` with `Authorization: Bearer
-${REVIEW_INTERNAL_TOKEN}`. Exhausted Circle work can be resumed with
-`POST /internal/review-orders/:orderId/resume` and a strict
+`GET /internal/review-orders` plus
+`GET /internal/dashboard-chain-snapshot` with `Authorization: Bearer
+${REVIEW_INTERNAL_TOKEN}`. The latter is a durable SQLite snapshot refreshed
+by the review worker; web navigation never performs a historical Arc log scan.
+The index deliberately scans at a low background cadence and retains its last
+verified data through transient RPC failures. Exhausted Circle work can be
+resumed with `POST /internal/review-orders/:orderId/resume` and a strict
 `{"operation":"payout"|"resolution"|"refund"}` body using the same bearer
 token.
 

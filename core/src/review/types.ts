@@ -1,6 +1,54 @@
 import type { Address, Hex } from "viem";
 import type { ReasonCode } from "../validate.js";
 
+export type DashboardSnapshotStatus =
+  | "syncing"
+  | "ready"
+  | "stale"
+  | "degraded";
+
+export interface DashboardJobRecord {
+  id: string;
+  client: Address;
+  provider: Address;
+  evaluator: Address;
+  description: string;
+  budget: string;
+  budgetUsdc: string;
+  expiredAt: number;
+  statusCode: number;
+  status: string;
+  hook: Address;
+}
+
+export interface DashboardFeedRow extends DashboardJobRecord {
+  provenance: "AI auto" | "escalated" | "human" | null;
+  lane: "AI" | "human" | null;
+  confidenceBP: number | null;
+  statusTxHash: Hex | null;
+  verdictTxHash: Hex | null;
+  latestBlock: string;
+}
+
+export interface DashboardReviewRecord extends DashboardJobRecord {
+  deliverableHash: Hex | null;
+  reasonHash: Hex;
+  escalationTxHash: Hex | null;
+  clientRequested: boolean;
+}
+
+export interface DashboardChainSnapshot {
+  version: 1;
+  configured: boolean;
+  status: DashboardSnapshotStatus;
+  latestBlock: string | null;
+  indexedAt: string | null;
+  lastAttemptAt: string | null;
+  lastError: string | null;
+  feed: DashboardFeedRow[];
+  reviewQueue: DashboardReviewRecord[];
+}
+
 export const reviewOrderStates = [
   "paid",
   "dispatched",

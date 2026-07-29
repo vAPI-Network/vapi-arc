@@ -6,6 +6,7 @@ export default [
   route("health/demo", "routes/demo-health.ts"),
   route("openapi.json", "routes/openapi.ts"),
   route("demo", "routes/demo.tsx"),
+  route("api/demo-readiness", "routes/api-demo-readiness.ts"),
   route("api/demo-runs/:runId", "routes/api-demo-run.ts"),
   route("proof/:runId", "routes/proof.tsx"),
   route("review", "routes/review.tsx"),

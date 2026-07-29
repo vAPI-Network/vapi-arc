@@ -11,6 +11,66 @@ export const REVIEW_ORDER_STATES = [
   "reviewer_paid_settlement_failed",
 ] as const;
 
+export type DashboardSnapshotStatus =
+  | "syncing"
+  | "ready"
+  | "stale"
+  | "degraded";
+
+export type DashboardJobRecord = {
+  id: string;
+  client: string;
+  provider: string;
+  evaluator: string;
+  description: string;
+  budget: string;
+  budgetUsdc: string;
+  expiredAt: number;
+  statusCode: number;
+  status: string;
+  hook: string;
+};
+
+export type DashboardFeedRow = DashboardJobRecord & {
+  provenance: "AI auto" | "escalated" | "human" | null;
+  lane: "AI" | "human" | null;
+  confidenceBP: number | null;
+  statusTxHash: string | null;
+  verdictTxHash: string | null;
+  latestBlock: string;
+};
+
+export type DashboardReviewRecord = DashboardJobRecord & {
+  deliverableHash: string | null;
+  reasonHash: string;
+  escalationTxHash: string | null;
+  clientRequested: boolean;
+};
+
+export type DashboardChainSnapshot = {
+  version: 1;
+  configured: boolean;
+  status: DashboardSnapshotStatus;
+  latestBlock: string | null;
+  indexedAt: string | null;
+  lastAttemptAt: string | null;
+  lastError: string | null;
+  feed: DashboardFeedRow[];
+  reviewQueue: DashboardReviewRecord[];
+};
+
+export type ReputationData = {
+  address: string;
+  completed: number;
+  rejected: number;
+  n: number;
+  volumeUsdc: string;
+  reliability: number | null;
+  rated: boolean;
+  disclaimer: string;
+  history: DashboardFeedRow[];
+};
+
 export type ReviewOrderState = (typeof REVIEW_ORDER_STATES)[number];
 export type ReviewDecision = "approve" | "reject";
 
@@ -113,6 +173,12 @@ const ACTIVE_SEQUENCE: ReviewOrderState[] = [
   "settled",
 ];
 
+const REVIEW_TIME_FORMATTER = new Intl.DateTimeFormat("en", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
 export function reviewStateProgress(state: ReviewOrderState): number {
   const index = ACTIVE_SEQUENCE.indexOf(state);
   if (index >= 0) return index;
@@ -144,11 +210,7 @@ export function formatReviewTime(value: string | null): string {
   if (!value) return "Pending";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  }).format(date);
+  return REVIEW_TIME_FORMATTER.format(date);
 }
 
 export function formatDuration(seconds: number | null): string {

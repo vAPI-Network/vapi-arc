@@ -378,14 +378,22 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
 
 export function ReadinessPanel({
   readiness,
+  error,
 }: {
   readiness: DemoReadiness | null;
+  error?: string | null;
 }) {
   if (!readiness) {
     return (
-      <aside className="demo-readiness demo-readiness-error" role="status">
-        <strong>Readiness unavailable</strong>
-        <span>The demo service could not be checked. Try again shortly.</span>
+      <aside
+        className={`demo-readiness ${error ? "demo-readiness-error" : ""}`}
+        role="status"
+      >
+        <strong>{error ? "Readiness unavailable" : "Checking live rails…"}</strong>
+        <span>
+          {error ??
+            "The console is ready while Arc, Gateway, Telegram, and Circle are checked in the background."}
+        </span>
       </aside>
     );
   }

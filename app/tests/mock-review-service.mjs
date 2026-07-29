@@ -12,6 +12,9 @@ let escrowPolls = 0;
 let reviewPolls = 0;
 let telegramVerdictStarted = false;
 let statusRequests = 0;
+let readinessRequests = 0;
+let snapshotRequests = 0;
+let snapshotMode = "ready";
 
 function event(id, type, payload = {}) {
   return {
@@ -251,6 +254,57 @@ function readiness() {
   };
 }
 
+function dashboardSnapshot() {
+  const timestamp = new Date().toISOString();
+  if (snapshotMode === "syncing") {
+    return {
+      version: 1,
+      configured: true,
+      status: "syncing",
+      latestBlock: null,
+      indexedAt: null,
+      lastAttemptAt: timestamp,
+      lastError: null,
+      feed: [],
+      reviewQueue: [],
+    };
+  }
+  return {
+    version: 1,
+    configured: true,
+    status: snapshotMode === "stale" ? "stale" : "ready",
+    latestBlock: "200000",
+    indexedAt: timestamp,
+    lastAttemptAt: timestamp,
+    lastError:
+      snapshotMode === "stale"
+        ? "Arc RPC rate limit reached; the background indexer will retry."
+        : null,
+    feed: [
+      {
+        id: "160000",
+        client,
+        provider,
+        evaluator: "0x44A51C365eB3eC703534ebb56394E7015930533D",
+        description: "Mock verified API contract job",
+        budget: "1000000",
+        budgetUsdc: "1",
+        expiredAt: Math.floor(Date.now() / 1_000) + 86_400,
+        statusCode: 3,
+        status: "Completed",
+        hook: "0x0000000000000000000000000000000000000000",
+        provenance: "human",
+        lane: "human",
+        confidenceBP: null,
+        statusTxHash: tx("b"),
+        verdictTxHash: tx("a"),
+        latestBlock: "199999",
+      },
+    ],
+    reviewQueue: [],
+  };
+}
+
 function json(response, status, body) {
   const payload = JSON.stringify(body);
   response.writeHead(status, {
@@ -269,10 +323,28 @@ createServer((request, response) => {
     reviewPolls = 0;
     telegramVerdictStarted = false;
     statusRequests = 0;
+    readinessRequests = 0;
+    snapshotRequests = 0;
+    snapshotMode = "ready";
     return json(response, 200, { reset: true });
   }
+  if (
+    url.pathname === "/__snapshot-mode" &&
+    request.method === "POST"
+  ) {
+    const mode = url.searchParams.get("mode");
+    if (!["ready", "syncing", "stale"].includes(mode)) {
+      return json(response, 400, { error: "invalid mode" });
+    }
+    snapshotMode = mode;
+    return json(response, 200, { mode });
+  }
   if (url.pathname === "/__stats") {
-    return json(response, 200, { statusRequests });
+    return json(response, 200, {
+      statusRequests,
+      readinessRequests,
+      snapshotRequests,
+    });
   }
   if (url.pathname === "/__telegram-verdict" && request.method === "POST") {
     telegramVerdictStarted = true;
@@ -280,7 +352,18 @@ createServer((request, response) => {
     return json(response, 202, { accepted: true });
   }
   if (url.pathname === "/internal/demo/readiness") {
-    return json(response, 200, { readiness: readiness() });
+    readinessRequests += 1;
+    return setTimeout(
+      () => json(response, 200, { readiness: readiness() }),
+      150,
+    );
+  }
+  if (url.pathname === "/internal/dashboard-chain-snapshot") {
+    snapshotRequests += 1;
+    return json(response, 200, { snapshot: dashboardSnapshot() });
+  }
+  if (url.pathname === "/internal/review-orders") {
+    return json(response, 200, { orders: [] });
   }
   if (url.pathname === "/internal/demo-runs/latest") {
     const terminalOnly = url.searchParams.get("terminal") === "true";

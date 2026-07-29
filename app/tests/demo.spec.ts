@@ -6,6 +6,23 @@ test.beforeEach(async ({ request }) => {
   await request.post(`${mockUrl}/__reset`);
 });
 
+test("readiness stays private and does not block the presenter console", async ({
+  page,
+}) => {
+  await page.goto("/demo");
+  const unauthorized = await page.request.get("/api/demo-readiness");
+  expect(unauthorized.status()).toBe(401);
+  let stats = await page.request.get(`${mockUrl}/__stats`);
+  expect((await stats.json()).readinessRequests).toBe(0);
+
+  await page.getByLabel("Presenter passcode").fill("trust-demo");
+  await page.getByRole("button", { name: "Unlock live demo" }).click();
+  await expect(page.getByText("Checking live rails…")).toBeVisible();
+  await expect(page.getByText("All systems ready")).toBeVisible();
+  stats = await page.request.get(`${mockUrl}/__stats`);
+  expect((await stats.json()).readinessRequests).toBe(1);
+});
+
 test("two browser clicks reach verified public proof", async ({ page }) => {
   await page.goto("/demo");
   await expect(
