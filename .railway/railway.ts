@@ -39,8 +39,7 @@ export default defineRailway(() => {
       ],
     },
     deploy: {
-      startCommand:
-        "node app/node_modules/@react-router/serve/bin.js app/build/server/index.js",
+      startCommand: "pnpm -C app start",
       healthcheckPath: "/health",
       healthcheckTimeout: 60,
       drainingSeconds: 30,
