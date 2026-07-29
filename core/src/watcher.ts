@@ -12,6 +12,7 @@ import { envAddress } from "./config.js";
 import {
   agenticCommerceAbi,
   defaultAgenticCommerceAddress,
+  evaluationRouterAbi,
 } from "./contracts.js";
 import { dataRoot } from "./paths.js";
 import type { AgenticJob, SubmittedJob } from "./types.js";
@@ -121,6 +122,18 @@ export async function* pollSubmittedJobs(
       });
       const job = normalizeJob(rawJob);
       if (!isAddressEqual(job.evaluator, routerAddress)) continue;
+      // A previously processed job can be encountered again when a later job
+      // in the same log range is retried. Terminal jobs change status, while an
+      // escalated job deliberately remains Submitted, so both checks are
+      // required to make the cursor crash-safe.
+      if (job.status !== 2) continue;
+      const resolution = await client.readContract({
+        address: routerAddress,
+        abi: evaluationRouterAbi,
+        functionName: "resolutions",
+        args: [jobId],
+      });
+      if (Number(resolution) !== 0) continue;
       yield {
         ...job,
         deliverable: deliverable as Hex,

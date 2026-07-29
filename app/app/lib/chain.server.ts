@@ -6,6 +6,8 @@ import {
   getAddress,
   http,
   isAddress,
+  keccak256,
+  toBytes,
   type Abi,
   type AbiEvent,
   type Address,
@@ -32,6 +34,10 @@ const arcTestnet = defineChain({
   id: ARC_CHAIN_ID,
   name: "Arc Testnet",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  contracts: {
+    // canonical multicall3, verified deployed on Arc testnet
+    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
+  },
   rpcUrls: {
     default: { http: [ARC_RPC_URL] },
   },
@@ -55,29 +61,48 @@ export const publicClient = createPublicClient({
 
 type CacheEntry<T> = {
   expiresAt: number;
+  settled: boolean;
   value: Promise<T>;
 };
 
 const memoryCache = new Map<string, CacheEntry<unknown>>();
 
-export function cached<T>(
-  key: string,
-  producer: () => Promise<T>,
-): Promise<T> {
+export function cached<T>(key: string, producer: () => Promise<T>): Promise<T> {
   const now = Date.now();
   const existing = memoryCache.get(key) as CacheEntry<T> | undefined;
-  if (existing && existing.expiresAt > now) return existing.value;
+  if (existing && (!existing.settled || existing.expiresAt > now)) {
+    return existing.value;
+  }
 
-  const value = producer().catch((error) => {
-    memoryCache.delete(key);
-    throw error;
-  });
-  memoryCache.set(key, { expiresAt: now + CACHE_TTL_MS, value });
+  const value = producer();
+  const entry: CacheEntry<T> = {
+    expiresAt: Number.POSITIVE_INFINITY,
+    settled: false,
+    value,
+  };
+  memoryCache.set(key, entry);
+  void value.then(
+    () => {
+      const current = memoryCache.get(key);
+      if (current?.value === value) {
+        current.settled = true;
+        current.expiresAt = Date.now() + CACHE_TTL_MS;
+      }
+    },
+    () => {
+      // Only remove this exact request. A late rejection must never evict a
+      // newer value that another caller installed for the same cache key.
+      if (memoryCache.get(key)?.value === value) {
+        memoryCache.delete(key);
+      }
+    },
+  );
   return value;
 }
 
 export type ChainEvent = {
   eventName: string;
+  address: Address;
   args: Record<string, unknown>;
   blockNumber: bigint;
   logIndex: number;
@@ -100,6 +125,7 @@ export type JobRecord = {
 
 export type FeedRow = JobRecord & {
   provenance: "AI auto" | "escalated" | "human" | null;
+  lane: "AI" | "human" | null;
   confidenceBP: number | null;
   statusTxHash: Hash | null;
   verdictTxHash: Hash | null;
@@ -110,6 +136,7 @@ export type ReviewRecord = JobRecord & {
   deliverableHash: Hash | null;
   reasonHash: Hash;
   escalationTxHash: Hash;
+  clientRequested: boolean;
 };
 
 export type ReputationData = {
@@ -129,6 +156,21 @@ function configuredRouterAddress(): Address | null {
   return value && isAddress(value) ? getAddress(value) : null;
 }
 
+// On-chain marker the worker uses when escalating a HumanOnly-lane job; the
+// review queue labels entries by comparing reason hashes against it.
+export const HUMAN_LANE_REASON_HASH = keccak256(
+  toBytes("client requested human review"),
+);
+
+// Demo job ids pinned via env so the deployed feed still shows the story after
+// those jobs age out of the RECENT_BLOCKS lookback window.
+function pinnedJobIds(): string[] {
+  return (process.env.DEMO_JOB_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => /^\d+$/.test(value));
+}
+
 export function hasConfiguredRouter(): boolean {
   return configuredRouterAddress() !== null;
 }
@@ -137,14 +179,18 @@ function eventFromAbi(abi: Abi, name: string): AbiEvent {
   return getAbiItem({ abi, name }) as AbiEvent;
 }
 
-function toChainEvent(eventName: string, log: unknown): ChainEvent | null {
+function toChainEvent(log: unknown): ChainEvent | null {
   const value = log as {
+    eventName?: string;
+    address?: Address;
     args?: Record<string, unknown>;
     blockNumber?: bigint | null;
     logIndex?: number | null;
     transactionHash?: Hash | null;
   };
   if (
+    !value.eventName ||
+    !value.address ||
     value.blockNumber === null ||
     value.blockNumber === undefined ||
     value.logIndex === null ||
@@ -154,7 +200,8 @@ function toChainEvent(eventName: string, log: unknown): ChainEvent | null {
     return null;
   }
   return {
-    eventName,
+    eventName: value.eventName,
+    address: getAddress(value.address),
     args: value.args ?? {},
     blockNumber: value.blockNumber,
     logIndex: value.logIndex,
@@ -164,7 +211,7 @@ function toChainEvent(eventName: string, log: unknown): ChainEvent | null {
 
 async function recentRange(): Promise<{ fromBlock: bigint; toBlock: bigint }> {
   const toBlock = await cached("latest-block", () =>
-    publicClient.getBlockNumber(),
+    withRpcSlot(() => publicClient.getBlockNumber()),
   );
   return {
     fromBlock: toBlock > RECENT_BLOCKS ? toBlock - RECENT_BLOCKS : 0n,
@@ -172,24 +219,92 @@ async function recentRange(): Promise<{ fromBlock: bigint; toBlock: bigint }> {
   };
 }
 
-async function getLogsChunked(
-  address: Address,
-  abi: Abi,
-  eventName: string,
-): Promise<ChainEvent[]> {
+// The public Arc RPC rate-limits bursts (-32011 "request limit reached"), so
+// getLogs calls go through a small semaphore with backoff instead of Promise.all firing all at once.
+const RPC_CONCURRENCY = 2;
+let rpcActive = 0;
+const rpcWaiters: Array<() => void> = [];
+
+function isRateLimited(error: unknown): boolean {
+  for (
+    let current: unknown = error;
+    current;
+    current = (current as { cause?: unknown }).cause
+  ) {
+    const message =
+      current instanceof Error ? current.message : String(current);
+    if (
+      message.includes("request limit reached") ||
+      message.includes("-32011") ||
+      message.includes("Status: 429")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function withRpcSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (rpcActive >= RPC_CONCURRENCY) {
+    await new Promise<void>((resolve) => rpcWaiters.push(resolve));
+  }
+  rpcActive += 1;
+  try {
+    let delayMs = 1_000;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (!isRateLimited(error) || attempt >= 5) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        delayMs *= 2;
+      }
+    }
+  } finally {
+    rpcActive -= 1;
+    rpcWaiters.shift()?.();
+  }
+}
+
+// Every event any route needs. One chunked sweep fetches all of them for both
+// contracts (address + topic0 are OR-filters in eth_getLogs), and routes filter
+// in memory — the ~2 req/s public RPC can't afford one getLogs per event name.
+const AGENTIC_EVENT_NAMES = ["JobSubmitted", "JobCompleted", "JobRejected"];
+const ROUTER_EVENT_NAMES = [
+  "AIVerdict",
+  "Escalated",
+  "HumanVerdict",
+  "LaneSet",
+];
+
+async function sweepLogs(): Promise<ChainEvent[]> {
+  const router = configuredRouterAddress();
   const { fromBlock, toBlock } = await recentRange();
   const cacheKey = [
-    "logs",
-    address,
-    eventName,
+    "sweep",
+    router ?? "no-router",
     fromBlock.toString(),
     toBlock.toString(),
   ].join(":");
 
   return cached(cacheKey, async () => {
-    const event = eventFromAbi(abi, eventName);
+    const addresses = router
+      ? [agenticCommerceAddress, router]
+      : [agenticCommerceAddress];
+    const events = [
+      ...AGENTIC_EVENT_NAMES.map((name) =>
+        eventFromAbi(agenticCommerceAbi, name),
+      ),
+      ...(router
+        ? ROUTER_EVENT_NAMES.map((name) =>
+            eventFromAbi(evaluationRouterAbi, name),
+          )
+        : []),
+    ];
     const logs: ChainEvent[] = [];
 
+    // Intentionally sequence block chunks: Arc's public RPC rate-limits burst
+    // eth_getLogs traffic. withRpcSlot also caps concurrency across requests.
     for (
       let chunkStart = fromBlock;
       chunkStart <= toBlock;
@@ -199,14 +314,16 @@ async function getLogsChunked(
         chunkStart + LOG_CHUNK_SIZE - 1n > toBlock
           ? toBlock
           : chunkStart + LOG_CHUNK_SIZE - 1n;
-      const chunk = await publicClient.getLogs({
-        address,
-        event,
-        fromBlock: chunkStart,
-        toBlock: chunkEnd,
-      });
+      const chunk = await withRpcSlot(() =>
+        publicClient.getLogs({
+          address: addresses,
+          events,
+          fromBlock: chunkStart,
+          toBlock: chunkEnd,
+        }),
+      );
       for (const log of chunk) {
-        const normalized = toChainEvent(eventName, log);
+        const normalized = toChainEvent(log);
         if (normalized) logs.push(normalized);
       }
     }
@@ -215,29 +332,27 @@ async function getLogsChunked(
   });
 }
 
-async function agenticEvents(names: string[]): Promise<ChainEvent[]> {
-  const groups = await Promise.all(
-    names.map((name) =>
-      getLogsChunked(
-        agenticCommerceAddress,
-        agenticCommerceAbi,
-        name,
-      ),
-    ),
+async function eventsFrom(
+  address: Address,
+  names: string[],
+): Promise<ChainEvent[]> {
+  const all = await sweepLogs();
+  const wanted = new Set(names);
+  return all.filter(
+    (event) =>
+      wanted.has(event.eventName) && sameAddress(event.address, address),
   );
-  return groups.flat();
+}
+
+async function agenticEvents(names: string[]): Promise<ChainEvent[]> {
+  return eventsFrom(agenticCommerceAddress, names);
 }
 
 async function routerEvents(
   router: Address,
   names: string[],
 ): Promise<ChainEvent[]> {
-  const groups = await Promise.all(
-    names.map((name) =>
-      getLogsChunked(router, evaluationRouterAbi, name),
-    ),
-  );
-  return groups.flat();
+  return eventsFrom(router, names);
 }
 
 function jobIdFrom(event: ChainEvent): string | null {
@@ -319,14 +434,25 @@ async function getJobs(jobIds: string[]): Promise<Map<string, JobRecord>> {
   const key = `jobs:${uniqueIds.slice().sort().join(",")}`;
 
   return cached(key, async () => {
-    const results = await publicClient.multicall({
-      allowFailure: true,
-      contracts: uniqueIds.map((jobId) => ({
-        address: agenticCommerceAddress,
-        abi: agenticCommerceAbi,
-        functionName: "getJob",
-        args: [BigInt(jobId)],
-      })),
+    const results = await withRpcSlot(async () => {
+      const batch = await publicClient.multicall({
+        allowFailure: true,
+        contracts: uniqueIds.map((jobId) => ({
+          address: agenticCommerceAddress,
+          abi: agenticCommerceAbi,
+          functionName: "getJob",
+          args: [BigInt(jobId)],
+        })),
+      });
+      // allowFailure swallows transport-level 429s as per-call failures (viem
+      // splits large multicalls, so a single rate-limited sub-batch silently
+      // drops those jobs). Rethrow so withRpcSlot backs off and retries
+      // instead of rendering an empty feed.
+      const throttled = batch.find(
+        (result) => result.status !== "success" && isRateLimited(result.error),
+      );
+      if (throttled && throttled.status !== "success") throw throttled.error;
+      return batch;
     });
 
     const jobs = new Map<string, JobRecord>();
@@ -383,6 +509,7 @@ function buildFeedRows(
       return {
         ...job,
         provenance,
+        lane: null as FeedRow["lane"],
         confidenceBP,
         statusTxHash: jobEvent?.transactionHash ?? null,
         verdictTxHash: verdictEvent?.transactionHash ?? null,
@@ -400,16 +527,77 @@ export async function getFeedData(): Promise<{
   if (!router) return { configured: false, rows: [] };
 
   return cached(`feed:${router}`, async () => {
-    const [agentic, verdicts] = await Promise.all([
+    const [agentic, routerLogs] = await Promise.all([
       agenticEvents(["JobSubmitted", "JobCompleted", "JobRejected"]),
-      routerEvents(router, ["AIVerdict", "Escalated", "HumanVerdict"]),
+      routerEvents(router, [
+        "AIVerdict",
+        "Escalated",
+        "HumanVerdict",
+        "LaneSet",
+      ]),
     ]);
-    const ids = agentic.map(jobIdFrom).filter((id): id is string => id !== null);
+    const verdicts = routerLogs.filter((e) => e.eventName !== "LaneSet");
+    const laneByJob = latestByJob(
+      routerLogs.filter((e) => e.eventName === "LaneSet"),
+    );
+    const ids = [
+      ...agentic.map(jobIdFrom).filter((id): id is string => id !== null),
+      ...pinnedJobIds(),
+    ];
     const jobs = await getJobs(ids);
     for (const [id, job] of jobs) {
       if (!sameAddress(job.evaluator, router)) jobs.delete(id);
     }
-    return { configured: true, rows: buildFeedRows(jobs, agentic, verdicts) };
+    const rows = buildFeedRows(jobs, agentic, verdicts);
+    for (const row of rows) {
+      const laneEvent = laneByJob.get(row.id);
+      if (laneEvent !== undefined) {
+        row.lane = Number(laneEvent.args.lane) === 1 ? "human" : "AI";
+      }
+    }
+    await backfillProvenance(router, rows);
+    return { configured: true, rows };
+  });
+}
+
+// Router Resolution enum: 1 AutoCompleted, 2 AutoRejected, 3 Escalated,
+// 4 HumanCompleted, 5 HumanRejected. Used for pinned jobs whose verdict
+// events fall outside the log lookback window.
+async function backfillProvenance(
+  router: Address,
+  rows: FeedRow[],
+): Promise<void> {
+  const missing = rows.filter((row) => row.provenance === null);
+  if (missing.length === 0) return;
+  const key = `resolutions:${router}:${missing.map((row) => row.id).join(",")}`;
+
+  const resolutions = await cached(key, () =>
+    withRpcSlot(async () => {
+      const batch = await publicClient.multicall({
+        allowFailure: true,
+        contracts: missing.map((row) => ({
+          address: router,
+          abi: evaluationRouterAbi,
+          functionName: "resolutions",
+          args: [BigInt(row.id)],
+        })),
+      });
+      // Same as getJobs: a rate-limited sub-batch must throw so withRpcSlot
+      // retries, instead of silently leaving rows on "Awaiting verdict".
+      const throttled = batch.find(
+        (result) => result.status !== "success" && isRateLimited(result.error),
+      );
+      if (throttled && throttled.status !== "success") throw throttled.error;
+      return batch;
+    }),
+  );
+
+  resolutions.forEach((result, index) => {
+    if (result.status !== "success") return;
+    const code = Number(result.result);
+    if (code === 1 || code === 2) missing[index].provenance = "AI auto";
+    if (code === 3) missing[index].provenance = "escalated";
+    if (code === 4 || code === 5) missing[index].provenance = "human";
   });
 }
 
@@ -457,6 +645,9 @@ export async function getReviewData(): Promise<{
             : null,
         reasonHash: reasonHash as Hash,
         escalationTxHash: escalation.transactionHash,
+        clientRequested:
+          (reasonHash as Hash).toLowerCase() ===
+          HUMAN_LANE_REASON_HASH.toLowerCase(),
       });
     }
 

@@ -1,39 +1,61 @@
 # vapi-arc — Agent Guide
 
-Hackathon build for Circle's Arc "Programmable Money" hackathon (Agentic track). **Submit by Sun 2026-08-02** (midpoint, must submit to stay in; final deadline Aug 22; top teams → 8-week accelerator).
+Hackathon build for Circle's Arc "Programmable Money" hackathon via Encode Club (Agentic Economy track). **Real dates (verified from the logged-in Encode dashboard 2026-07-28):** human IS registered (participant "Mark T"); **mid-submission checkpoint is MANDATORY to stay in the hackathon — extended, open until Sun Aug 2 midnight (dashboard countdown: Aug 3 1:59 PM CEST); submit ASAP** (paste-ready copy: docs/submission/checkpoint-2.md); registration closes Sat Aug 8; **final submission Sun Aug 9 AoE** = functional MVP on Arc + public repo + 3-min video + **deck**; Demo Day Thu Aug 20 (6 PM CEST); top ~8 teams → 8-week accelerator. Platform locks at deadlines — submit early. Project page not yet created (name: "vAPI Trust Network", Agentic Economy track).
 
-**The product:** auditable evaluator-as-a-service for ERC-8183. Our `EvaluationRouter` holds the evaluator seat on Circle's deployed AgenticCommerce contract; a guarded AI judge settles narrow low-risk jobs automatically; uncertain/hostile work routes to a human **before** funds move (settlement is terminal in ERC-8183 — no appeals). Full design + trimmed scope + schedule: `docs/specs/2026-07-27-vapi-trust-design.md` (read it first).
+**The product:** one cohesive outcome and trust layer for ERC-8183 agentic work. An agent escrows USDC; the guarded AI lane either settles within policy or escalates. Escalated/HumanOnly work can purchase an allowlisted human review through x402. Telegram carries the review, Circle pays the auditor, and the same Circle Developer-Controlled Wallet records the evidence-backed verdict through `EvaluationRouter` before AgenticCommerce completes or rejects the escrow. Settlement is terminal; this is pre-settlement review, not an appeal system. Primary spec: `docs/specs/2026-07-28-paid-human-review-exchange.md`.
 
-## State (as of Mon 2026-07-27 evening)
+## State (as of Tue 2026-07-28 — v3 and paid-review stack implemented)
 
-Done, committed, verified:
-- `contracts/src/EvaluationRouter.sol` — 22/22 Foundry tests green (`cd contracts && forge test`). Deploy: `contracts/script/DeployRouter.s.sol`.
-- `core/` — guarded AI judge worker (watcher → hostile-input judge → deterministic gate → evidence records → oracle submitter). `pnpm -C core typecheck` green; `node --import tsx src/index.ts --once --dry-run` works without API keys.
-- `app/` — React Router v7 SSR dashboard (feed, /review queue, /provider/:address, /api/reputation/:address). No DB; loaders read Arc RPC. `pnpm -C app build` green; smoke-tested.
-- `scripts/e2e-lifecycle.sh` + `scripts/e2e-router.sh` — full two-job demo (AI settle / escalate→human reject / unauthorized revert proof). **Blocked on faucet funds.**
-- `adapters/arc/abi/` — pinned ABIs of deployed AgenticCommerce (UUPS proxy, Circle-upgradeable) + our router.
+Done and verified:
+- `contracts/src/EvaluationRouter.sol` v3 preserves AIAllowed/HumanOnly lanes and adds reviewer/reward/evidence/payout provenance to `humanResolve`. Foundry is 37/37 green. The source-verified Arc Testnet deployment is `0x44A51C365eB3eC703534ebb56394E7015930533D`.
+- The router's sole `humanResolver` is the Circle Developer-Controlled Wallet `0x025d2216594469E19EA70F38ef9D08E47e5dd3E7` (verified by live RPC and the deployment broadcast). v2 `0x1a43aec02e86096b7548ff78f335e6d6271b306a` and v1 `0x215766ef04b4d3af08e1cfc15863962a305af3d4` are historical read-only deployments; never use them as the current `ROUTER_ADDRESS`.
+- `core/` contains both the guarded AI judge and the paid human-review exchange: x402 seller middleware with durable signed-payment journaling, canonical payer+nonce replay protection, and fail-safe quarantined restart reconciliation, hash-verified AI-evidence handoff before every AI decision, transactional SQLite order/assignment/vote/event state, Telegram webhook/claim/verdict flow, pre-request Circle payout and contract-execution journaling, idempotent retry/reconciliation, nonterminal `STUCK` polling, authenticated exhausted-attempt recovery, refunds, canonical `HumanEvidenceV1`, reviewer CLI, health, OpenAPI, and public polling/evidence/reviewer endpoints. Core typecheck and 73/73 tests are green.
+- `app/` is a read-only React Router v7 SSR dashboard. It combines Arc events with the token-authenticated review-service feed, shows the paid-review timeline and factual reviewer history, and degrades cleanly when either source is unavailable. There are no browser or web-server `HUMAN_PK` resolve controls. App typecheck and production build are green.
+- `adapters/arc/abi/` pins the live AgenticCommerce and EvaluationRouter v3 ABIs. Evidence is a versioned union of `AIEvidenceV1 | HumanEvidenceV1`.
 
-## Chain facts (verified on-chain 2026-07-27)
+## Live Arc facts
 
-- Arc Testnet: chainId 5042002, RPC https://rpc.testnet.arc.network, explorer https://testnet.arcscan.app
-- AgenticCommerce proxy `0x0747EEf0706327138c69792bF28Cd525089e4583` → impl `0xa316fd02827242d537f84730f8a37d0ba5fd351a`
-- Job status enum: Open=0 Funded=1 Submitted=2 Completed=3 Rejected=4 Expired=5; `complete()` requires Submitted + caller==evaluator; evaluator fee paid only on complete (currently 0 bps; platform fee 0 bps)
-- USDC = `0x3600000000000000000000000000000000000000` (6dp ERC-20 view of native gas)
-- Demo wallets in gitignored `.env` (testnet throwaway): client `0x6581760Dcbc2a2617a8DF2f20273b9B52660DA31`, provider `0x6734b4E43e6EF164ce07eC17fC27FdD7C51078d0`, oracle `0x07CFB9b2F7a6F363Bf1804f2d511BcCf09cD59e9`, human `0x3c8bBdBE8a9A1f51df3fadB6292CBcf0cDFa141F`
+- Arc Testnet: chainId `5042002`; RPC `https://rpc.testnet.arc.network`; explorer `https://testnet.arcscan.app`.
+- AgenticCommerce proxy: `0x0747EEf0706327138c69792bF28Cd525089e4583`.
+- EvaluationRouter v3: `0x44A51C365eB3eC703534ebb56394E7015930533D`.
+- Circle resolver/treasury wallet: `0x025d2216594469E19EA70F38ef9D08E47e5dd3E7`.
+- Arc USDC: `0x3600000000000000000000000000000000000000` (6 decimals).
+- Current v3 proof set (`DEMO_JOB_IDS=159668,159669,159670`), rechecked by live RPC:
+  - `159668`: AIAllowed, `AutoCompleted`, AgenticCommerce status `Completed`.
+  - `159669`: AIAllowed injection case, `Escalated`, status `Submitted`.
+  - `159670`: client-selected HumanOnly, model skipped, `Escalated`, status `Submitted`.
+- These jobs prove the v3 AI and escalation lanes. They do **not** yet prove the paid human-review chain.
+- Public RPC limits are about 2 requests/second and 10,000 blocks per `eth_getLogs`. Keep the custom patient transport, shared chunked event sweeps, semaphore, and backoff; do not restore per-event `Promise.all` fan-out.
 
-## Remaining path to submission
+## Paid human-review workflow
 
-1. **Blocked on human**: faucet USDC to the 4 wallets (faucet.circle.com; client needs most); Circle Standard testnet API key (`vapi-arc-hackathon`) + Entity Secret; ANTHROPIC_API_KEY; Encode registration.
-2. Once funded: deploy router (`forge script script/DeployRouter.s.sol --rpc-url $ARC_RPC_URL --private-key $CLIENT_PK --broadcast`), set `ROUTER_ADDRESS` in `.env` + app env, run `scripts/e2e-router.sh` → submittable floor exists. Record backup footage immediately.
-3. Wed: live judge runs with real Anthropic key; injection fixtures; refine judge prompt (security-critical — treat deliverables as hostile).
-4. Thu: Circle dev-controlled wallets integration (client/provider/judge wallet sets — judging points); wire /review resolve button to human wallet; Railway deploy.
-5. Fri: 10 unattended E2E runs; adversarial review of router; arcscan source verification; **feature freeze Friday night**.
-6. Sat: README trust model (who controls oracle wallet, caps, outage behavior, "auditable evaluator operator" NOT "trustless arbitration"; note Circle's contract is admin-upgradeable) + judging-criteria matrix + roadmap section (dual-chain: Base = VAPI token/x402 home, Arc = 8183 adapter; staked DAO panels later) + 3-min video + submission draft.
-7. Sun Aug 2: dry run, submit via Encode. Nothing else.
+1. `POST /v1/review-orders` validates the UUID/text payload, live v3 job, deliverable commitment, and eligible non-conflicted auditor before Circle Gateway requests the default `$0.25` x402 payment. SQLite reservations prevent duplicate concurrent charges; the full authorization and exact pre-settlement attempt are journaled for restart recovery.
+2. The service persists the paid order, payment reference, unique Circle idempotency keys, assignments, votes, events, and asynchronous transaction attempts in `better-sqlite3`.
+3. Telegram dispatches eligible allowlisted auditors. The first atomic claim wins; the reviewer chooses approve/reject and supplies a written reason. Claim timeout redispatches once; review-SLA expiry refunds the payer from the treasury.
+4. A valid verdict is preflighted, then the Circle wallet pays the reviewer (default `$0.20`) regardless of decision. The created transaction ID is persisted before polling.
+5. After payout confirmation, the service hashes canonical `HumanEvidenceV1` and executes v3 `humanResolve` from that same Circle wallet. A paid-reviewer/failed-settlement state retries only settlement and never pays twice. If fresh authoritative Arc state proves fulfillment became permanently impossible, an earned auditor reward is preserved and the x402 payer is refunded without calling the router.
+6. The dashboard and public endpoints expose sanitized order state, evidence verification, reviewer history, payout/resolution/refund receipts, and Arcscan links. Internal operational errors remain behind `REVIEW_INTERNAL_TOKEN`.
+
+## Railway layout
+
+One repository, three Railway services:
+- `vapi-web` → `deploy/railway-app.json`: SSR dashboard; static `/health`.
+- `vapi-review` → `deploy/railway-review.json`: x402 API, Telegram webhook/worker, SQLite, Circle payout/settlement. Single replica; mount `/data` and set `REVIEW_DATABASE_PATH=/data/review-exchange.sqlite`.
+- `vapi-judge` → `deploy/railway-judge.json`: guarded AI watcher. Mount its own `/data` volume and set `VAPI_DATA_ROOT=/data` for the cursor, deliverables, and AI evidence.
+
+Both long-running core services start Node directly and have a 30-second Railway drain window. Scope oracle/Anthropic secrets only to `vapi-judge`; scope Gateway/Telegram/Circle secrets only to `vapi-review`. Share `REVIEW_INTERNAL_TOKEN` with all three services, give the judge `REVIEW_SERVICE_INTERNAL_URL`, and give the web app `REVIEW_SERVICE_URL`. Never commit secret values.
+
+## Remaining external blockers / next proof
+
+1. Configure a real `X402_SELLER_ADDRESS`, `TELEGRAM_BOT_TOKEN`, valid `TELEGRAM_WEBHOOK_SECRET`, and a shared `REVIEW_INTERNAL_TOKEN`; set the review service's public HTTPS URL and add 2–3 allowlisted reviewers. Values belong only in external secret stores or gitignored local env.
+2. Deploy/configure the three Railway services and their two separate persistent volumes.
+3. The actual live `x402 payment → Telegram claim/verdict → Circle auditor payout → v3 escrow settlement → public evidence timeline` has **not been run yet**. This is the next milestone; do not describe jobs 159669/159670 as paid-review completions.
+4. After the first full run, repeat approval, rejection/refund, AI escalation, and payout-success/settlement-retry recovery; then record the phone-buzz demo and submit the marketplace endpoint.
 
 ## Conventions
 
-- Conventional Commits. Keep `core/` (judge) and `app/` (dashboard) independent packages; contracts via Foundry.
-- Money logic (`contracts/`) changes require running the full test suite; the router is deliberately minimal — do not add staking/slashing/panel features before the midpoint (explicitly cut, see design doc).
-- The AI judge must never hold a transaction key; all settlement goes through the deterministic gate in `core/src/validate.ts`.
-- Degrade order if slipping: Circle Wallets integration → resolve-button wiring → live-judge polish. Floor = router + AI settle + one human-resolve, on-chain.
+- Conventional Commits. One repository and one product; `core/` contains both workers/services, `app/` is read-only presentation, and `contracts/` uses Foundry.
+- Any money-path contract change requires the full Foundry suite; any review-service change requires core typecheck/tests.
+- Never reintroduce `HUMAN_PK` into the app or web server. The Circle wallet is the sole v3 human resolver; the oracle key is only for the guarded AI submission path.
+- Keep claims precise: operator-attested provenance and factual reviewer statistics, not trustless arbitration or reviewer "accuracy."
+- No DAO, token, staking, slashing, appeals, open signup, arbitrary files/URLs, or quorum panels in the hackathon build.

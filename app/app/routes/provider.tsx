@@ -75,7 +75,7 @@ export default function Provider({ loaderData }: Route.ComponentProps) {
       <section aria-labelledby="history-heading">
         <div className="section-bar">
           <h2 id="history-heading">Settled jobs</h2>
-          <p>Completed and rejected by vAPI Trust</p>
+          <p>Completed and rejected by vAPI Trust Network</p>
         </div>
         {reputation.history.length === 0 ? (
           <div className="empty-state">

@@ -25,7 +25,7 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export const meta: Route.MetaFunction = () => [
-  { title: "vAPI Trust — Auditable ERC-8183 evaluation" },
+  { title: "vAPI Trust Network · Auditable ERC-8183 evaluation" },
   {
     name: "description",
     content:
@@ -40,8 +40,8 @@ function Header() {
   return (
     <header className="site-header">
       <div className="shell header-inner">
-        <NavLink to="/" className="wordmark" aria-label="vAPI Trust home">
-          vAPI Trust<span aria-hidden="true">.</span>
+        <NavLink to="/" className="wordmark" aria-label="vAPI Trust Network home">
+          vAPI Trust Network<span aria-hidden="true">.</span>
         </NavLink>
         <nav aria-label="Primary navigation" className="primary-nav">
           <NavLink to="/" end className={navClass}>

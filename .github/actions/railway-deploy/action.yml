@@ -1,0 +1,201 @@
+name: Deploy Railway service
+description: Upload one service, wait for its exact deployment, then verify its health or worker state
+
+inputs:
+  project-id:
+    description: Railway project UUID
+    required: true
+  service-id:
+    description: Railway service UUID
+    required: true
+  environment:
+    description: Railway environment name
+    required: false
+    default: production
+  service-name:
+    description: Human-readable service name for logs
+    required: true
+  health-url:
+    description: Optional public health endpoint
+    required: false
+    default: ""
+
+outputs:
+  deployment-id:
+    description: Railway deployment UUID
+    value: ${{ steps.upload.outputs.deployment-id }}
+  deployment-status:
+    description: Terminal Railway deployment status
+    value: ${{ steps.wait.outputs.deployment-status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Upload source
+      id: upload
+      shell: bash
+      env:
+        PROJECT_ID: ${{ inputs.project-id }}
+        SERVICE_ID: ${{ inputs.service-id }}
+        SERVICE_NAME: ${{ inputs.service-name }}
+        RAILWAY_ENVIRONMENT: ${{ inputs.environment }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${RAILWAY_TOKEN:-}" ]]; then
+          echo "::error::RAILWAY_TOKEN is not configured"
+          exit 1
+        fi
+
+        revision="$(git rev-parse HEAD)"
+
+        upload_json="$(
+          railway up \
+            --project "$PROJECT_ID" \
+            --service "$SERVICE_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --detach \
+            --yes \
+            --json \
+            --message "GitHub Actions ${revision}"
+        )"
+        deployment_id="$(
+          jq -r '.deploymentId // .id // empty' <<< "$upload_json"
+        )"
+
+        if [[ -z "$deployment_id" ]]; then
+          echo "::error::Railway did not return a ${SERVICE_NAME} deployment ID"
+          exit 1
+        fi
+
+        echo "deployment-id=$deployment_id" >> "$GITHUB_OUTPUT"
+        echo "${SERVICE_NAME} deployment: ${deployment_id}"
+
+    - name: Wait for Railway deployment
+      id: wait
+      shell: bash
+      env:
+        DEPLOYMENT_ID: ${{ steps.upload.outputs.deployment-id }}
+        PROJECT_ID: ${{ inputs.project-id }}
+        SERVICE_ID: ${{ inputs.service-id }}
+        SERVICE_NAME: ${{ inputs.service-name }}
+        RAILWAY_ENVIRONMENT: ${{ inputs.environment }}
+      run: |
+        set -euo pipefail
+
+        for attempt in $(seq 1 120); do
+          status="$(
+            railway deployment list \
+              --project "$PROJECT_ID" \
+              --service "$SERVICE_ID" \
+              --environment "$RAILWAY_ENVIRONMENT" \
+              --limit 50 \
+              --json 2>/dev/null |
+              jq -r --arg id "$DEPLOYMENT_ID" \
+                '.[] | select(.id == $id) | .status' |
+              head -n 1 || true
+          )"
+
+          case "$status" in
+            SUCCESS)
+              echo "${SERVICE_NAME} deployment succeeded"
+              echo "deployment-status=SUCCESS" >> "$GITHUB_OUTPUT"
+              {
+                echo "### ${SERVICE_NAME}"
+                echo "- Deployment: \`${DEPLOYMENT_ID}\`"
+                echo "- Status: SUCCESS"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+            SKIPPED)
+              echo "${SERVICE_NAME} had no watched source changes"
+              echo "deployment-status=SKIPPED" >> "$GITHUB_OUTPUT"
+              {
+                echo "### ${SERVICE_NAME}"
+                echo "- Deployment: \`${DEPLOYMENT_ID}\`"
+                echo "- Status: SKIPPED (existing deployment retained)"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+            FAILED|CRASHED|REMOVED|CANCELED|CANCELLED)
+              echo "::error::${SERVICE_NAME} deployment ended with ${status}"
+              echo "Inspect: https://railway.com/project/${PROJECT_ID}/service/${SERVICE_ID}?id=${DEPLOYMENT_ID}"
+              exit 1
+              ;;
+            *)
+              echo "${SERVICE_NAME}: ${status:-registering} (${attempt}/120)"
+              sleep 10
+              ;;
+          esac
+        done
+
+        echo "::error::Timed out waiting for ${SERVICE_NAME} deployment"
+        echo "Inspect: https://railway.com/project/${PROJECT_ID}/service/${SERVICE_ID}?id=${DEPLOYMENT_ID}"
+        exit 1
+
+    - name: Verify public health
+      if: ${{ inputs.health-url != '' }}
+      shell: bash
+      env:
+        HEALTH_URL: ${{ inputs.health-url }}
+        SERVICE_NAME: ${{ inputs.service-name }}
+      run: |
+        set -euo pipefail
+
+        for attempt in $(seq 1 30); do
+          if curl \
+            --fail \
+            --silent \
+            --show-error \
+            --max-time 15 \
+            --output /dev/null \
+            "$HEALTH_URL"; then
+            echo "${SERVICE_NAME} health check passed"
+            echo "- Health: ${HEALTH_URL}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "${SERVICE_NAME} health check failed (${attempt}/30)"
+          sleep 10
+        done
+
+        echo "::error::${SERVICE_NAME} did not become healthy at ${HEALTH_URL}"
+        exit 1
+
+    - name: Verify worker remains running
+      if: ${{ inputs.health-url == '' }}
+      shell: bash
+      env:
+        DEPLOYMENT_ID: ${{ steps.upload.outputs.deployment-id }}
+        DEPLOYMENT_STATUS: ${{ steps.wait.outputs.deployment-status }}
+        PROJECT_ID: ${{ inputs.project-id }}
+        SERVICE_ID: ${{ inputs.service-id }}
+        SERVICE_NAME: ${{ inputs.service-name }}
+        RAILWAY_ENVIRONMENT: ${{ inputs.environment }}
+      run: |
+        set -euo pipefail
+        sleep 15
+
+        service_state="$(
+          railway service status \
+            --project "$PROJECT_ID" \
+            --service "$SERVICE_ID" \
+            --environment "$RAILWAY_ENVIRONMENT" \
+            --json
+        )"
+        current_id="$(jq -r '.deploymentId // empty' <<< "$service_state")"
+        current_status="$(jq -r '.status // empty' <<< "$service_state")"
+        stopped="$(jq -r '.stopped // true' <<< "$service_state")"
+
+        if [[ "$DEPLOYMENT_STATUS" == "SUCCESS" &&
+              "$current_id" != "$DEPLOYMENT_ID" ]]; then
+          echo "::error::${SERVICE_NAME} is no longer on the deployed revision"
+          exit 1
+        fi
+
+        if [[ "$current_status" != "SUCCESS" ||
+              "$stopped" != "false" ]]; then
+          echo "::error::${SERVICE_NAME} did not remain running after deployment"
+          exit 1
+        fi
+
+        echo "${SERVICE_NAME} passed Railway readiness and remained running"

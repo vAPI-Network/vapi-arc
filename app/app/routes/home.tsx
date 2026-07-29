@@ -22,9 +22,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <div className="page-heading">
         <div>
           <p className="eyebrow">Verdict feed</p>
-          <h1>Evaluation, with receipts.</h1>
+          <h1>Evaluation with receipts</h1>
           <p className="lede">
-            Live ERC-8183 job outcomes, grounded in public on-chain evidence.
+            Live ERC-8183 job outcomes with public on-chain evidence.
             AI settles narrow work; uncertainty routes to a human.
           </p>
         </div>
@@ -87,6 +87,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                           <small>
                             {(job.confidenceBP / 100).toFixed(2)}% confidence
                           </small>
+                        )}
+                        {job.lane === "human" && (
+                          <small>human review lane (client-chosen)</small>
                         )}
                       </div>
                     </td>

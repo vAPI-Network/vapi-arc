@@ -5,3 +5,5 @@ contracts/cache/
 dist/
 .DS_Store
 core/data/evidence/
+core/data/*.sqlite*
+secrets/

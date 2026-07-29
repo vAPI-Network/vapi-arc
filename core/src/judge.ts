@@ -81,7 +81,6 @@ export async function judgeDeliverable(input: JudgeInput): Promise<unknown> {
   const request: MessageCreateParamsNonStreaming = {
     model: getJudgeModel(),
     max_tokens: 1_024,
-    temperature: 0,
     system: JUDGE_SYSTEM_PROMPT,
     messages: [
       {

@@ -1,0 +1,200 @@
+name: Deploy Arc Demo
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-arc-production
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Deployment preflight
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    outputs:
+      deploy-ref: ${{ steps.ref.outputs.deploy-ref }}
+    steps:
+      - name: Select tested revision
+        id: ref
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          echo "deploy-ref=$TESTED_SHA" >> "$GITHUB_OUTPUT"
+          echo "Deploying tested revision: $TESTED_SHA"
+
+      - name: Validate deployment configuration
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_WEB_SERVICE_ID: ${{ vars.RAILWAY_WEB_SERVICE_ID }}
+          RAILWAY_REVIEW_SERVICE_ID: ${{ vars.RAILWAY_REVIEW_SERVICE_ID }}
+          RAILWAY_JUDGE_SERVICE_ID: ${{ vars.RAILWAY_JUDGE_SERVICE_ID }}
+          WEB_URL: ${{ vars.WEB_URL }}
+          REVIEW_URL: ${{ vars.REVIEW_URL }}
+        run: |
+          set -euo pipefail
+
+          for name in \
+            RAILWAY_TOKEN \
+            RAILWAY_PROJECT_ID \
+            RAILWAY_WEB_SERVICE_ID \
+            RAILWAY_REVIEW_SERVICE_ID \
+            RAILWAY_JUDGE_SERVICE_ID \
+            WEB_URL \
+            REVIEW_URL; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::GitHub production configuration is missing ${name}"
+              exit 1
+            fi
+          done
+
+          uuid_pattern='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          for name in \
+            RAILWAY_PROJECT_ID \
+            RAILWAY_WEB_SERVICE_ID \
+            RAILWAY_REVIEW_SERVICE_ID \
+            RAILWAY_JUDGE_SERVICE_ID; do
+            if [[ ! "${!name}" =~ $uuid_pattern ]]; then
+              echo "::error::${name} must be a Railway service UUID"
+              exit 1
+            fi
+          done
+
+          for name in WEB_URL REVIEW_URL; do
+            if [[ ! "${!name}" =~ ^https:// ]]; then
+              echo "::error::${name} must use HTTPS"
+              exit 1
+            fi
+          done
+
+  deploy-review:
+    name: Deploy review exchange
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.preflight.outputs.deploy-ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+
+      - uses: ./.github/actions/railway-deploy
+        with:
+          project-id: ${{ vars.RAILWAY_PROJECT_ID }}
+          service-id: ${{ vars.RAILWAY_REVIEW_SERVICE_ID }}
+          environment: production
+          service-name: vapi-review
+          health-url: ${{ vars.REVIEW_URL }}/health
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  deploy-judge:
+    name: Deploy judge worker
+    needs: [preflight, deploy-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.preflight.outputs.deploy-ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+
+      - uses: ./.github/actions/railway-deploy
+        with:
+          project-id: ${{ vars.RAILWAY_PROJECT_ID }}
+          service-id: ${{ vars.RAILWAY_JUDGE_SERVICE_ID }}
+          environment: production
+          service-name: vapi-judge
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  deploy-web:
+    name: Deploy dashboard
+    needs: [preflight, deploy-review, deploy-judge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.preflight.outputs.deploy-ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+
+      - uses: ./.github/actions/railway-deploy
+        with:
+          project-id: ${{ vars.RAILWAY_PROJECT_ID }}
+          service-id: ${{ vars.RAILWAY_WEB_SERVICE_ID }}
+          environment: production
+          service-name: vapi-web
+          health-url: ${{ vars.WEB_URL }}/health
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  summary:
+    name: Deployment summary
+    if: always() && needs.preflight.result != 'skipped'
+    needs: [preflight, deploy-review, deploy-judge, deploy-web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Summarize
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          REVIEW_RESULT: ${{ needs.deploy-review.result }}
+          JUDGE_RESULT: ${{ needs.deploy-judge.result }}
+          WEB_RESULT: ${{ needs.deploy-web.result }}
+          WEB_URL: ${{ vars.WEB_URL }}
+          REVIEW_URL: ${{ vars.REVIEW_URL }}
+        run: |
+          {
+            echo "## vAPI Arc deployment"
+            echo "- Preflight: ${PREFLIGHT_RESULT}"
+            echo "- Review: ${REVIEW_RESULT} — ${REVIEW_URL}"
+            echo "- Judge: ${JUDGE_RESULT}"
+            echo "- Dashboard: ${WEB_RESULT} — ${WEB_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$PREFLIGHT_RESULT" != "success" ||
+                "$REVIEW_RESULT" != "success" ||
+                "$JUDGE_RESULT" != "success" ||
+                "$WEB_RESULT" != "success" ]]; then
+            exit 1
+          fi

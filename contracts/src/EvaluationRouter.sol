@@ -30,6 +30,8 @@ interface IERC20Minimal {
 /// - `oracle` is a narrowly-authorized service wallet. The AI judge never holds
 ///   this key; an off-chain deterministic layer validates the model's structured
 ///   verdict before this wallet signs anything.
+/// - The job's client chooses the review lane. `HumanOnly` makes AI settlement
+///   revert at the contract level; the default lane allows the guarded AI path.
 /// - The AI path can only settle jobs whose escrow budget is at or below
 ///   `autoSettleCap` and whose reported confidence meets `minConfidenceBP`, and
 ///   never past job expiry. Everything else must go through `humanResolve`.
@@ -49,6 +51,13 @@ contract EvaluationRouter {
         HumanRejected
     }
 
+    /// Client-chosen evaluation path. AIAllowed (default) permits guarded
+    /// auto-settlement; HumanOnly requires a human verdict.
+    enum ReviewLane {
+        AIAllowed,
+        HumanOnly
+    }
+
     IAgenticCommerce public immutable target;
 
     address public owner;
@@ -62,16 +71,36 @@ contract EvaluationRouter {
 
     mapping(uint256 => Resolution) public resolutions;
     mapping(uint256 => bytes32) public evidence;
+    mapping(uint256 => ReviewLane) public lanes;
+    /// Human-review provenance. These fields are populated only for terminal
+    /// human resolutions; the resolver attests that the off-chain payout was
+    /// completed before settlement.
+    mapping(uint256 => address) public reviewers;
+    mapping(uint256 => uint256) public reviewerRewards;
+    mapping(uint256 => bytes32) public reviewerPayouts;
 
     event AIVerdict(uint256 indexed jobId, bool approved, uint16 confidenceBP, bytes32 evidenceHash);
     event Escalated(uint256 indexed jobId, bytes32 reasonHash);
-    event HumanVerdict(uint256 indexed jobId, bool approved, bytes32 evidenceHash);
+    event HumanVerdict(
+        uint256 indexed jobId,
+        address indexed reviewer,
+        bool approved,
+        uint256 reward,
+        bytes32 evidenceHash,
+        bytes32 payoutTxHash
+    );
+    event LaneSet(uint256 indexed jobId, ReviewLane lane);
     event ConfigUpdated(address oracle, address humanResolver, uint256 autoSettleCap, uint16 minConfidenceBP);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     error NotOwner();
     error NotOracle();
     error NotHumanResolver();
+    error InvalidReviewer();
+    error MissingPayoutTransaction();
+    error NotClient(uint256 jobId);
+    error LaneLocked(uint256 jobId);
+    error HumanReviewRequired(uint256 jobId);
     error ZeroAddress();
     error AlreadyResolved(uint256 jobId);
     error NotEscalatable(uint256 jobId);
@@ -104,13 +133,28 @@ contract EvaluationRouter {
         uint256 autoSettleCap_,
         uint16 minConfidenceBP_
     ) {
-        if (target_ == address(0) || oracle_ == address(0) || humanResolver_ == address(0)) revert ZeroAddress();
+        if (target_ == address(0) || oracle_ == address(0) || humanResolver_ == address(0)) {
+            revert ZeroAddress();
+        }
         target = IAgenticCommerce(target_);
         owner = msg.sender;
         oracle = oracle_;
         humanResolver = humanResolver_;
         autoSettleCap = autoSettleCap_;
         minConfidenceBP = minConfidenceBP_;
+    }
+
+    // ------------------------------------------------------------------ lanes
+
+    /// The job's client picks the evaluation path. Flippable both ways until
+    /// the router records a resolution for the job.
+    function setLane(uint256 jobId, ReviewLane lane) external {
+        if (resolutions[jobId] != Resolution.None) revert LaneLocked(jobId);
+        IAgenticCommerce.Job memory job = target.getJob(jobId);
+        if (job.evaluator != address(this)) revert NotEvaluator(jobId);
+        if (msg.sender != job.client) revert NotClient(jobId);
+        lanes[jobId] = lane;
+        emit LaneSet(jobId, lane);
     }
 
     // ---------------------------------------------------------------- verdicts
@@ -122,6 +166,7 @@ contract EvaluationRouter {
         onlyOracle
     {
         if (resolutions[jobId] != Resolution.None) revert AlreadyResolved(jobId);
+        if (lanes[jobId] == ReviewLane.HumanOnly) revert HumanReviewRequired(jobId);
         if (confidenceBP < minConfidenceBP) revert BelowConfidence(confidenceBP, minConfidenceBP);
 
         IAgenticCommerce.Job memory job = _checkedJob(jobId);
@@ -144,17 +189,31 @@ contract EvaluationRouter {
     }
 
     /// Human fallback: allowed from None or Escalated, exempt from cap and
-    /// confidence gates. Still pre-settlement — settlement remains terminal.
-    function humanResolve(uint256 jobId, bool approve, bytes32 evidenceHash) external onlyHumanResolver {
+    /// confidence gates. `reviewer`, `reward`, and `payoutTxHash` are
+    /// resolver-attested payout provenance; this contract does not custody the
+    /// reviewer reward. Still pre-settlement — settlement remains terminal.
+    function humanResolve(
+        uint256 jobId,
+        address reviewer,
+        bool approve,
+        uint256 reward,
+        bytes32 evidenceHash,
+        bytes32 payoutTxHash
+    ) external onlyHumanResolver {
         Resolution current = resolutions[jobId];
         if (current != Resolution.None && current != Resolution.Escalated) revert AlreadyResolved(jobId);
+        if (reviewer == address(0)) revert InvalidReviewer();
+        if (reward != 0 && payoutTxHash == bytes32(0)) revert MissingPayoutTransaction();
 
         _checkedJob(jobId);
 
         resolutions[jobId] = approve ? Resolution.HumanCompleted : Resolution.HumanRejected;
         evidence[jobId] = evidenceHash;
+        reviewers[jobId] = reviewer;
+        reviewerRewards[jobId] = reward;
+        reviewerPayouts[jobId] = payoutTxHash;
         _settle(jobId, approve, evidenceHash);
-        emit HumanVerdict(jobId, approve, evidenceHash);
+        emit HumanVerdict(jobId, reviewer, approve, reward, evidenceHash, payoutTxHash);
     }
 
     // ---------------------------------------------------------------- internal

@@ -1,11 +1,24 @@
 import { getAddress, type Hex } from "viem";
 import "./env.js";
+import { publicClient } from "./chain.js";
+import { evaluationRouterAbi } from "./contracts.js";
+import { envAddress } from "./config.js";
+import { loadDeliverable, type DeliverableInspection } from "./deliverables.js";
 import {
-  loadDeliverable,
-  type DeliverableInspection,
-} from "./deliverables.js";
-import { writeEvidence } from "./evidence.js";
+  HUMAN_LANE_REASON,
+  HUMAN_LANE_REASON_HASH,
+  writeEvidence,
+} from "./evidence.js";
+import { publishAIEvidence } from "./evidence-publisher.js";
 import { getJudgeModel, judgeDeliverable } from "./judge.js";
+import {
+  closeJudgeHealthServer,
+  createJudgeHealthServer,
+  JudgeReadiness,
+  listenJudgeHealthServer,
+  loadJudgeWorkerConfig,
+  validateLiveJudgeEnvironment,
+} from "./judge-worker-runtime.js";
 import { submitDecision } from "./submit.js";
 import type { SubmittedJob } from "./types.js";
 import { validateDecision, type Verdict } from "./validate.js";
@@ -18,6 +31,19 @@ const fixtureMode = args.has("--fixture-job") || dryRun;
 const POLL_INTERVAL_MS = 12_000;
 const FIXTURE_DELIVERABLE_HASH: Hex =
   "0xb2cb7ee28ba629e7834ced57f8edf364a34c7bedb74330adb4f1bea77d1f33f2";
+
+// Mirrors EvaluationRouter.ReviewLane and the dashboard's queue labeling.
+const REVIEW_LANE_HUMAN_ONLY = 1;
+
+async function readReviewLane(jobId: bigint): Promise<number> {
+  const lane = await publicClient.readContract({
+    address: envAddress("ROUTER_ADDRESS"),
+    abi: evaluationRouterAbi,
+    functionName: "lanes",
+    args: [jobId],
+  });
+  return Number(lane);
+}
 
 function jobLog(jobId: bigint, event: string, fields: object = {}): void {
   console.log(
@@ -64,6 +90,42 @@ async function processJob(job: SubmittedJob): Promise<void> {
     budget: job.budget,
     submittedAtBlock: job.submittedAtBlock,
   });
+
+  // Client-chosen review lane, enforced by the router. HumanOnly jobs never
+  // reach the model: escalate straight to the human review queue.
+  if (
+    !fixtureMode &&
+    (await readReviewLane(job.id)) === REVIEW_LANE_HUMAN_ONLY
+  ) {
+    jobLog(job.id, "human_lane_requested", {});
+    const verdict: Verdict = {
+      approve: false,
+      confidenceBP: 0,
+      reasoning: HUMAN_LANE_REASON,
+      injectionSuspected: false,
+    };
+    const evidence = await writeEvidence({
+      jobId: job.id,
+      verdict,
+      reasonCode: "human_lane_requested",
+      model: "none (model not invoked)",
+      deliverableHash: job.deliverable,
+    });
+    jobLog(job.id, "evidence_written", {
+      evidenceHash: evidence.evidenceHash,
+      path: evidence.path,
+    });
+    await submitDecision({
+      jobId: job.id,
+      action: "escalate",
+      verdict,
+      evidenceHash: HUMAN_LANE_REASON_HASH,
+      dryRun,
+    });
+    jobLog(job.id, "processing_complete");
+    return;
+  }
+
   const deliverable = await loadDeliverable(job.id, job.deliverable);
   jobLog(job.id, "deliverable_loaded", {
     status: deliverable.status,
@@ -91,19 +153,26 @@ async function processJob(job: SubmittedJob): Promise<void> {
     confidenceBP: decision.verdict.confidenceBP,
   });
 
-  const deliverableHash =
-    deliverable.computedHash ?? deliverable.onChainHash ?? job.deliverable;
   const evidence = await writeEvidence({
     jobId: job.id,
     verdict: decision.verdict,
     reasonCode: decision.reasonCode,
     model: getJudgeModel(),
-    deliverableHash,
+    // Evidence is bound to the escrow's immutable commitment. A mismatched
+    // local file is itself the escalation cause and must not replace the
+    // on-chain deliverable identity in provenance.
+    deliverableHash: job.deliverable,
   });
   jobLog(job.id, "evidence_written", {
     evidenceHash: evidence.evidenceHash,
     path: evidence.path,
   });
+  if (!dryRun) {
+    await publishAIEvidence(evidence.record, evidence.evidenceHash);
+    jobLog(job.id, "ai_evidence_published", {
+      evidenceHash: evidence.evidenceHash,
+    });
+  }
 
   await submitDecision({
     jobId: job.id,
@@ -133,18 +202,22 @@ async function processAvailableJobs(): Promise<boolean> {
     return safelyProcessJob(fixtureJob());
   }
 
-  let allSucceeded = true;
   for await (const job of pollSubmittedJobs()) {
-    allSucceeded = (await safelyProcessJob(job)) && allSucceeded;
+    if (!(await safelyProcessJob(job))) {
+      // Returning closes the generator before it checkpoints this log range,
+      // so the still-Submitted job is retried on the next pass.
+      return false;
+    }
   }
-  return allSucceeded;
+  return true;
 }
 
 async function main(): Promise<void> {
-  do {
+  if (runOnce) {
+    if (!dryRun) validateLiveJudgeEnvironment();
     try {
       const succeeded = await processAvailableJobs();
-      if (runOnce && !succeeded) process.exitCode = 1;
+      if (!succeeded) process.exitCode = 1;
     } catch (error) {
       console.error(
         JSON.stringify({
@@ -152,12 +225,97 @@ async function main(): Promise<void> {
           error: errorMessage(error),
         }),
       );
-      if (runOnce) process.exitCode = 1;
+      process.exitCode = 1;
     }
-    if (!runOnce) {
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    return;
+  }
+
+  const config = loadJudgeWorkerConfig();
+  const readiness = new JudgeReadiness({
+    maxAgeMs: config.readinessMaxAgeMs,
+  });
+  const healthServer = createJudgeHealthServer(readiness);
+  await listenJudgeHealthServer(healthServer, config.port);
+  console.log(
+    JSON.stringify({
+      event: "judge_health_listening",
+      port: config.port,
+      readinessMaxAgeMs: config.readinessMaxAgeMs,
+    }),
+  );
+
+  let stopping = false;
+  let wakeDelay: (() => void) | undefined;
+  let healthClosePromise: Promise<void> | undefined;
+
+  const closeHealthServer = (): Promise<void> => {
+    healthClosePromise ??= closeJudgeHealthServer(healthServer);
+    return healthClosePromise;
+  };
+  const requestShutdown = (signal: "SIGINT" | "SIGTERM"): void => {
+    if (stopping) return;
+    stopping = true;
+    readiness.markShuttingDown();
+    console.log(
+      JSON.stringify({
+        event: "judge_shutdown_requested",
+        signal,
+      }),
+    );
+    wakeDelay?.();
+    void closeHealthServer().catch((error: unknown) => {
+      console.error(
+        JSON.stringify({
+          event: "judge_health_close_failed",
+          error: errorMessage(error),
+        }),
+      );
+    });
+  };
+  const onSigint = (): void => requestShutdown("SIGINT");
+  const onSigterm = (): void => requestShutdown("SIGTERM");
+  const waitForNextPoll = (): Promise<void> => {
+    if (stopping) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        wakeDelay = undefined;
+        resolve();
+      }, POLL_INTERVAL_MS);
+      wakeDelay = () => {
+        clearTimeout(timer);
+        wakeDelay = undefined;
+        resolve();
+      };
+      if (stopping) wakeDelay();
+    });
+  };
+
+  process.once("SIGINT", onSigint);
+  process.once("SIGTERM", onSigterm);
+  try {
+    while (!stopping) {
+      try {
+        const succeeded = await processAvailableJobs();
+        if (succeeded) {
+          readiness.markPollSucceeded();
+        }
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "watcher_failed",
+            error: errorMessage(error),
+          }),
+        );
+      }
+      await waitForNextPoll();
     }
-  } while (!runOnce);
+  } finally {
+    process.off("SIGINT", onSigint);
+    process.off("SIGTERM", onSigterm);
+    readiness.markShuttingDown();
+    await closeHealthServer();
+    console.log(JSON.stringify({ event: "judge_stopped" }));
+  }
 }
 
 void main().catch((error: unknown) => {
