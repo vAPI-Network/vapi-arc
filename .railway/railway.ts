@@ -23,6 +23,8 @@ export default defineRailway(() => {
       ROUTER_ADDRESS: preserve(),
       REVIEW_SERVICE_URL: preserve(),
       REVIEW_INTERNAL_TOKEN: preserve(),
+      DEMO_ACCESS_CODE: preserve(),
+      DEMO_SESSION_SECRET: preserve(),
     },
     build: {
       builder: "RAILPACK",
@@ -78,6 +80,13 @@ export default defineRailway(() => {
       REVIEW_MIN_TREASURY_USDC: preserve(),
       CIRCLE_TRANSACTION_TIMEOUT_MS: preserve(),
       CIRCLE_MAX_ATTEMPTS: preserve(),
+      DEMO_ENABLED: preserve(),
+      DEMO_CLIENT_PK: preserve(),
+      DEMO_PROVIDER_PK: preserve(),
+      DEMO_ESCROW_BUDGET_USDC: preserve(),
+      DEMO_JOB_TTL_SECONDS: preserve(),
+      DEMO_MAX_RUNS_PER_HOUR: preserve(),
+      DEMO_JUDGE_HEALTH_URL: preserve(),
     },
     build: {
       builder: "RAILPACK",

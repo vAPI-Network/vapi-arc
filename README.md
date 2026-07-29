@@ -41,6 +41,26 @@ Every human resolution anchors the reviewer wallet, reward, evidence hash, and
 reviewer payout transaction on Arc. The dashboard exposes objective history and
 receipts without inventing an unverifiable “trust score.”
 
+## Live demo console
+
+The hosted `/demo` console turns the complete HumanOnly path into two browser
+actions and one Telegram decision:
+
+1. Unlock live controls with the presenter passcode and confirm every Arc,
+   Gateway, Telegram, Circle, wallet, and council readiness check is green.
+2. Select **Create & fund $1 escrow**. The server-owned demo agent creates the
+   job, selects HumanOnly before submission, funds it, commits the deliverable,
+   and waits for the real judge to escalate it.
+3. Select **Agent purchases human review · $0.25**. The console records the
+   genuine `402 → Gateway authorization → 202` exchange and waits for Telegram.
+4. The allowlisted auditor claims, taps approve or reject, and replies with a
+   written reason. The browser then follows the $0.20 payout, router settlement,
+   evidence verification, and Arcscan receipts automatically.
+
+Routine demo runs require no terminal, copied job IDs, browser wallet, or manual
+refresh. Private keys remain only in the single-replica `vapi-review` Railway
+service; completed `/proof/:runId` pages are public and read-only.
+
 ## Live contracts
 
 - Circle AgenticCommerce:
@@ -101,9 +121,9 @@ services from the same source.
 
 - `contracts/` — EvaluationRouter v3 and 37 Foundry tests.
 - `core/` — AI judge, x402 review service, SQLite state machine, Telegram bot,
-  Circle wallet orchestration, evidence, reviewer CLI, and 73 service tests.
-- `app/` — public Arc feed, paid-review operations timeline, and reviewer
-  history.
+  Circle wallet orchestration, evidence, reviewer CLI, and 91 service tests.
+- `app/` — live demo console, public proof pages, Arc feed, paid-review
+  operations timeline, and reviewer history.
 - `adapters/arc/` — pinned Circle contract ABIs.
 - `docs/` — trust model, architecture, and submission material.
 

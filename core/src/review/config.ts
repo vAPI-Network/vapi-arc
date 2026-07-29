@@ -1,5 +1,11 @@
 import path from "node:path";
-import { getAddress, isAddress, zeroAddress, type Address } from "viem";
+import {
+  getAddress,
+  isAddress,
+  zeroAddress,
+  type Address,
+  type Hex,
+} from "viem";
 import "../env.js";
 import { dataRoot } from "../paths.js";
 
@@ -263,6 +269,15 @@ function booleanValue(name: string, fallback = false): boolean {
   throw new Error(`${name} must be true or false`);
 }
 
+function optionalPrivateKey(name: string): Hex | undefined {
+  const value = process.env[name]?.trim();
+  if (!value) return undefined;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`${name} must be a 32-byte 0x-prefixed private key`);
+  }
+  return value as Hex;
+}
+
 function toDollarPrice(units: string): string {
   const value = BigInt(units);
   const whole = value / 1_000_000n;
@@ -304,6 +319,13 @@ export interface ReviewServiceConfig {
   logLookbackBlocks: bigint;
   bootstrapReviewers?: ReviewerBootstrapConfig[];
   allowPartialConfiguration: boolean;
+  demoEnabled?: boolean;
+  demoClientPrivateKey?: Hex;
+  demoProviderPrivateKey?: Hex;
+  demoEscrowBudget?: string;
+  demoJobTtlSeconds?: number;
+  demoMaxRunsPerHour?: number;
+  demoJudgeHealthUrl?: string;
 }
 
 export function loadReviewServiceConfig(): ReviewServiceConfig {
@@ -371,6 +393,29 @@ export function loadReviewServiceConfig(): ReviewServiceConfig {
     "REVIEW_LOG_LOOKBACK_BLOCKS",
     100_000,
   );
+  const demoEscrowBudget = usdcUnits(
+    "DEMO_ESCROW_BUDGET_USDC",
+    "1000000",
+  );
+  const demoJobTtlSeconds = unsignedInteger(
+    "DEMO_JOB_TTL_SECONDS",
+    86_400,
+  );
+  const demoMaxRunsPerHour = unsignedInteger(
+    "DEMO_MAX_RUNS_PER_HOUR",
+    3,
+  );
+  if (BigInt(demoEscrowBudget) < 1n) {
+    throw new Error("DEMO_ESCROW_BUDGET_USDC must be positive");
+  }
+  if (demoJobTtlSeconds < minJobExpiryBufferSeconds) {
+    throw new Error(
+      "DEMO_JOB_TTL_SECONDS cannot be shorter than REVIEW_MIN_JOB_EXPIRY_SECONDS",
+    );
+  }
+  if (demoMaxRunsPerHour < 1) {
+    throw new Error("DEMO_MAX_RUNS_PER_HOUR must be at least 1");
+  }
   validateOperationalConfig({
     port,
     claimTtlSeconds,
@@ -419,5 +464,12 @@ export function loadReviewServiceConfig(): ReviewServiceConfig {
       process.env.REVIEW_BOOTSTRAP_REVIEWERS_JSON,
     ),
     allowPartialConfiguration,
+    demoEnabled: booleanValue("DEMO_ENABLED", false),
+    demoClientPrivateKey: optionalPrivateKey("DEMO_CLIENT_PK"),
+    demoProviderPrivateKey: optionalPrivateKey("DEMO_PROVIDER_PK"),
+    demoEscrowBudget,
+    demoJobTtlSeconds,
+    demoMaxRunsPerHour,
+    demoJudgeHealthUrl: process.env.DEMO_JUDGE_HEALTH_URL?.trim() || undefined,
   };
 }

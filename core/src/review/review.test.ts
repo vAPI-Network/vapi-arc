@@ -1378,6 +1378,51 @@ describe("Telegram webhook delivery", () => {
 });
 
 describe("review assignment state", () => {
+  it("excludes the Circle resolver from admission and claim recovery", () => {
+    const database = new ReviewDatabase(":memory:");
+    const resolver = getAddress(
+      "0x7777777777777777777777777777777777777777",
+    );
+    const reviewer = database.upsertReviewer({
+      telegramUserId: "99",
+      telegramChatId: "99",
+      alias: "Conflicted resolver",
+      payoutAddress: resolver,
+      skills: ["contracts"],
+    });
+    assert.deepEqual(
+      database.listEligibleReviewers(CLIENT, PROVIDER, [resolver]),
+      [],
+    );
+
+    const content = "A stale assignment cannot bypass resolver exclusion.";
+    const { order } = database.createOrder({
+      requestId: randomUUID(),
+      deliverableContent: content,
+      job: validatedJob(content, "98"),
+      payment: payment(),
+      reviewPrice: "250000",
+      reward: "200000",
+    });
+    database.recordDispatch(
+      order.id,
+      reviewer.id,
+      "99",
+      new Date(Date.now() + 60_000).toISOString(),
+    );
+    assert.throws(
+      () =>
+        database.claimOrder(
+          order.id,
+          reviewer.id,
+          REVIEW_SLA_SECONDS,
+          [resolver],
+        ),
+      /resolver conflicts cannot claim/,
+    );
+    database.close();
+  });
+
   it("allows exactly one offered reviewer to claim", () => {
     const database = new ReviewDatabase(":memory:");
     const first = database.upsertReviewer({

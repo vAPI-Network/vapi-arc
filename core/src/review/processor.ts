@@ -194,6 +194,9 @@ export class ReviewProcessor {
     const reviewers = this.dependencies.database.listEligibleReviewers(
       order.jobClient,
       order.jobProvider,
+      this.dependencies.config.circleWalletAddress
+        ? [this.dependencies.config.circleWalletAddress]
+        : [],
     );
     if (reviewers.length === 0) {
       this.dependencies.database.updateOrder(order.id, "paid", {

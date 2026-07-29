@@ -36,7 +36,8 @@ railway up -s vapi-judge -e production --detach
 
 [`ci.yml`](../../.github/workflows/ci.yml) runs on pull requests and every
 push to `main`. It typechecks and tests the review/judge core, typechecks and
-builds the dashboard, and format-checks/tests the Solidity contracts.
+builds the dashboard, runs the two-click Playwright flow in desktop and
+390-pixel Chromium layouts, and format-checks/tests the Solidity contracts.
 
 [`deploy.yml`](../../.github/workflows/deploy.yml) is triggered only after
 that CI workflow succeeds for a trusted push to `main`. It deploys the exact
@@ -46,6 +47,8 @@ tested commit in this order:
 2. `vapi-judge`, whose Railway deployment succeeds only after a complete Arc
    polling pass makes its internal `/health` readiness probe return HTTP 200.
 3. `vapi-web`, including its public health check.
+4. An authenticated live-demo readiness check plus a locked `/demo` render
+   smoke test.
 
 The workflow captures the exact Railway deployment ID and waits for its
 terminal state. A Railway `SKIPPED` deployment retains the existing service,
@@ -67,10 +70,11 @@ WEB_URL
 REVIEW_URL
 ```
 
-One environment secret must be added manually:
+Two environment secrets must be added manually:
 
 ```text
 RAILWAY_TOKEN
+REVIEW_INTERNAL_TOKEN
 ```
 
 Create a Railway project token scoped to this project's `production`
@@ -81,9 +85,14 @@ the value in shell history:
 gh secret set RAILWAY_TOKEN \
   --repo vAPI-Network/vapi-arc \
   --env production
+
+gh secret set REVIEW_INTERNAL_TOKEN \
+  --repo vAPI-Network/vapi-arc \
+  --env production
 ```
 
-The command prompts for the value on standard input. Circle, Telegram,
+Each command prompts for the value on standard input. The internal token must
+match Railway so the post-deploy smoke can inspect readiness. Circle, Telegram,
 Anthropic, oracle, and wallet credentials stay only in Railway and are never
 duplicated into GitHub.
 
@@ -204,6 +213,8 @@ Configure `vapi-web` with:
 ROUTER_ADDRESS=0x44A51C365eB3eC703534ebb56394E7015930533D
 REVIEW_SERVICE_URL=https://<review-service-domain>
 REVIEW_INTERNAL_TOKEN=<same value as vapi-review>
+DEMO_ACCESS_CODE=<presenter passcode>
+DEMO_SESSION_SECRET=<at least 32 random bytes>
 ```
 
 Railway supplies `PORT` to all three processes. The review server also accepts
@@ -211,3 +222,48 @@ Railway supplies `PORT` to all three processes. The review server also accepts
 both cases Railway's `PORT` takes precedence. The judge returns `503` until a
 complete Arc poll succeeds and whenever its last successful poll is stale.
 `JUDGE_HEALTH_MAX_STALENESS_MS` defaults to five minutes.
+
+## Live demo console
+
+The `/demo` console uses the existing `vapi-review` service as a durable demo
+agent. It does not add a fourth service or a shared database. Configure these
+variables only on `vapi-review`:
+
+```text
+DEMO_ENABLED=true
+DEMO_CLIENT_PK=<dedicated Arc Testnet client/buyer private key>
+DEMO_PROVIDER_PK=<dedicated Arc Testnet provider private key>
+DEMO_ESCROW_BUDGET_USDC=1000000
+DEMO_JOB_TTL_SECONDS=86400
+DEMO_MAX_RUNS_PER_HOUR=3
+DEMO_JUDGE_HEALTH_URL=http://vapi-judge.railway.internal:<judge-port>/health
+```
+
+The client and provider must be distinct from each other, the Circle resolver,
+and every auditor payout address. The client needs at least 1 USDC per active
+escrow plus Arc gas, the provider needs Arc gas, the client's Circle Gateway
+balance needs at least the configured review price, and the Circle treasury
+must cover the review fee plus auditor reward. The readiness panel checks those
+conditions before enabling a run.
+
+`DEMO_CLIENT_PK` is also the x402 buyer signer. Deposit testnet USDC into that
+address's Circle Gateway balance once; routine runs do not repeat the deposit.
+Keep both demo private keys only in Railway. The web service receives only the
+presenter passcode, signed-session secret, review service URL, and shared
+internal bearer token.
+
+After this one-time setup, rehearse entirely in the browser:
+
+1. Open `<web-domain>/demo`, enter the presenter passcode, and wait for every
+   readiness check to turn green.
+2. Select **Create & fund $1 escrow** and wait for **Human judgment required**.
+3. Select **Agent purchases human review · $0.25**.
+4. Claim the Telegram task, select approve or reject, and reply to the bot with
+   the written reason.
+5. Keep the console open while it follows the auditor payout, router
+   settlement, canonical evidence, and Arcscan receipts.
+
+Completed runs remain available at `/proof/<run-id>`. Those pages are
+sanitized, public, and read-only. Starting, purchasing, retrying, or archiving
+requires the HttpOnly presenter session. SQLite on the existing review volume
+stores demo progress and safely resumes after redeploys; Supabase is not needed.
