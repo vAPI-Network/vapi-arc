@@ -202,6 +202,30 @@ jobs:
             exit 1
           fi
 
+          if [[ "$demo_html" =~ (/assets/root-[A-Za-z0-9_-]+\.css) ]]; then
+            css_path="${BASH_REMATCH[1]}"
+          else
+            css_path=""
+          fi
+          if [[ "$demo_html" =~ (/assets/entry\.client-[A-Za-z0-9_-]+\.js) ]]; then
+            js_path="${BASH_REMATCH[1]}"
+          else
+            js_path=""
+          fi
+          if [[ -z "$css_path" || -z "$js_path" ]]; then
+            echo "::error::Live demo HTML did not reference its compiled CSS and JavaScript"
+            exit 1
+          fi
+
+          for asset_path in \
+            "$css_path" \
+            "$js_path" \
+            "/telegram-trust-council-qr.svg"; do
+            curl --fail --silent --show-error \
+              --retry 8 --retry-delay 3 --retry-all-errors \
+              "${WEB_URL}${asset_path}" >/dev/null
+          done
+
           curl --fail --silent --show-error \
             --retry 8 --retry-delay 3 --retry-all-errors \
             "${WEB_URL}/health/demo" >/dev/null
