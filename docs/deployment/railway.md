@@ -47,8 +47,9 @@ tested commit in this order:
 2. `vapi-judge`, whose Railway deployment succeeds only after a complete Arc
    polling pass makes its internal `/health` readiness probe return HTTP 200.
 3. `vapi-web`, including its public health check.
-4. An authenticated live-demo readiness check plus a locked `/demo` render
-   smoke test.
+4. A bounded wait for one durable Arc evidence snapshot, an authenticated
+   live-demo readiness check, compiled asset checks, and 2.5-second TTFB
+   budgets for `/`, `/review`, and `/demo`.
 
 The workflow captures the exact Railway deployment ID and waits for its
 terminal state. A Railway `SKIPPED` deployment retains the existing service,

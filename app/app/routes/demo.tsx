@@ -26,6 +26,7 @@ import {
   DEMO_STATE_LABELS,
   isDemoRunTerminal,
   toPublicProofRun,
+  type DemoReadiness,
   type DemoRun,
 } from "~/lib/demo";
 import {
@@ -69,21 +70,16 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const requestedRunId = url.searchParams.get("run");
 
-  const [
-    latestResult,
-    latestCompletedResult,
-    readinessResult,
-    requestedRunResult,
-  ] = await Promise.all([
-    authorized
-      ? getLatestDemoRun()
-      : Promise.resolve({ ok: true as const, data: null }),
-    getLatestDemoRun(true),
-    authorized ? getDemoReadiness() : Promise.resolve(null),
-    authorized && requestedRunId && RUN_ID_PATTERN.test(requestedRunId)
-      ? getDemoRun(requestedRunId)
-      : Promise.resolve(null),
-  ]);
+  const [latestResult, latestCompletedResult, requestedRunResult] =
+    await Promise.all([
+      authorized
+        ? getLatestDemoRun()
+        : Promise.resolve({ ok: true as const, data: null }),
+      getLatestDemoRun(true),
+      authorized && requestedRunId && RUN_ID_PATTERN.test(requestedRunId)
+        ? getDemoRun(requestedRunId)
+        : Promise.resolve(null),
+    ]);
 
   const latest = latestResult.ok ? latestResult.data : null;
   const latestCompleted = latestCompletedResult.ok
@@ -104,17 +100,12 @@ export async function loader({ request }: Route.LoaderArgs) {
       ? requestedRunResult.message
       : null) ||
     (!latestResult.ok ? latestResult.message : null) ||
-    (!latestCompletedResult.ok ? latestCompletedResult.message : null) ||
-    (readinessResult && !readinessResult.ok
-      ? readinessResult.message
-      : null);
+    (!latestCompletedResult.ok ? latestCompletedResult.message : null);
 
   return data(
     {
       authorized,
       configured,
-      readiness:
-        readinessResult && readinessResult.ok ? readinessResult.data : null,
       run,
       publicLatest,
       serviceError,
@@ -289,9 +280,52 @@ function useLiveRun(initialRun: DemoRun | null): {
   };
 }
 
+function useLiveReadiness(authorized: boolean): {
+  readiness: DemoReadiness | null;
+  readinessError: string | null;
+} {
+  const fetcher = useFetcher<{
+    readiness?: DemoReadiness;
+    error?: string;
+  }>();
+  const loadRef = useRef(fetcher.load);
+  useEffect(() => {
+    loadRef.current = fetcher.load;
+  }, [fetcher.load]);
+
+  useEffect(() => {
+    if (!authorized) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        loadRef.current("/api/demo-readiness");
+      }
+    };
+    const interval = window.setInterval(refresh, 30_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    refresh();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [authorized]);
+
+  return {
+    readiness: fetcher.data?.readiness ?? null,
+    readinessError: fetcher.data?.error ?? null,
+  };
+}
+
 export default function Demo({ loaderData }: Route.ComponentProps) {
   const actionData = useActionData<ActionResponse>();
   const { run, pollError } = useLiveRun(loaderData.run);
+  const { readiness, readinessError } = useLiveReadiness(
+    loaderData.authorized,
+  );
   const location = useLocation();
   const isPresenter =
     new URLSearchParams(location.search).get("present") === "1";
@@ -384,11 +418,17 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
         </div>
       </header>
 
-      <ReadinessPanel readiness={loaderData.readiness} />
+      <ReadinessPanel readiness={readiness} error={readinessError} />
 
-      {(actionData?.error || loaderData.serviceError || pollError) && (
+      {(actionData?.error ||
+        loaderData.serviceError ||
+        readinessError ||
+        pollError) && (
         <div className="notice notice-error demo-page-notice" role="alert">
-          {actionData?.error || pollError || loaderData.serviceError}
+          {actionData?.error ||
+            pollError ||
+            readinessError ||
+            loaderData.serviceError}
         </div>
       )}
 
@@ -419,7 +459,7 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
         <div className="demo-console-action">
           <DemoActionPanel
             run={run}
-            readiness={loaderData.readiness}
+            readiness={readiness}
             createRequestId={loaderData.createRequestId}
           />
         </div>
@@ -429,7 +469,7 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
         {run ? DEMO_STATE_LABELS[run.state] : "Ready to begin"}
       </div>
 
-      <ScenarioDetails run={run} readiness={loaderData.readiness} />
+      <ScenarioDetails run={run} readiness={readiness} />
       {run && <DemoReceipts run={run} />}
       {run && <DemoEventLog run={run} />}
     </div>

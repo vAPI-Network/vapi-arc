@@ -73,9 +73,10 @@ service; completed `/proof/:runId` pages are public and read-only.
 Fresh v3 proof jobs are `159668` (AI completed), `159669` (injection
 escalation), and `159670` (HumanOnly escalation).
 
-Those jobs prove the deployed router’s AI and escalation lanes. The complete
-`x402 payment → Telegram review → auditor payout → escrow settlement` chain has
-not yet been run with the live Gateway and Telegram credentials.
+Those jobs prove the deployed router’s AI and escalation lanes. A live UI
+rehearsal also created and funded job `159917` and accepted a genuine 0.25 USDC
+x402 payment; its Telegram review expired before a verdict, so the complete
+auditor-payout and settlement chain still needs a successful live rehearsal.
 
 ## Run locally
 
@@ -121,7 +122,7 @@ services from the same source.
 
 - `contracts/` — EvaluationRouter v3 and 37 Foundry tests.
 - `core/` — AI judge, x402 review service, SQLite state machine, Telegram bot,
-  Circle wallet orchestration, evidence, reviewer CLI, and 94 service tests.
+  Circle wallet orchestration, evidence, reviewer CLI, and 106 service tests.
 - `app/` — live demo console, public proof pages, Arc feed, paid-review
   operations timeline, and reviewer history.
 - `adapters/arc/` — pinned Circle contract ABIs.

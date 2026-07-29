@@ -24,6 +24,7 @@ import {
 } from "./circle-webhook.js";
 import type { ReviewServiceConfig } from "./config.js";
 import { ReviewDatabase } from "./database.js";
+import type { DashboardSnapshotProcessor } from "./dashboard-snapshot.js";
 import type { DemoController } from "./demo.js";
 import { verifiedEscalationJob } from "./eligibility.js";
 import { verifyHumanEvidence } from "./evidence.js";
@@ -106,6 +107,7 @@ export interface ReviewAppDependencies {
   circle?: CircleRail;
   telegram?: TelegramGateway;
   processor: ReviewProcessor;
+  dashboardSnapshotProcessor?: DashboardSnapshotProcessor;
   demo?: DemoController;
   paymentMiddleware?: RequestHandler;
   circleWebhookVerifier?: CircleWebhookVerifier;
@@ -393,6 +395,19 @@ export function createReviewApp(dependencies: ReviewAppDependencies) {
             ),
           );
       }
+    }),
+  );
+
+  app.get(
+    "/internal/dashboard-chain-snapshot",
+    requireInternalToken(config),
+    wrap(async (_request, response) => {
+      response
+        .set("cache-control", "no-store")
+        .json(
+          dependencies.dashboardSnapshotProcessor?.getSnapshot() ??
+            fallbackDashboardSnapshot(config, database),
+        );
     }),
   );
 
@@ -902,6 +917,26 @@ function demoRunId(request: Request, response: Response): string | undefined {
     return undefined;
   }
   return runId;
+}
+
+function fallbackDashboardSnapshot(
+  config: ReviewServiceConfig,
+  database: ReviewDatabase,
+) {
+  const stored = database.getDashboardChainSnapshot();
+  if (stored) return stored;
+  const configured = Boolean(config.routerAddress);
+  return {
+    version: 1,
+    configured,
+    status: configured ? "syncing" : "degraded",
+    latestBlock: null,
+    indexedAt: null,
+    lastAttemptAt: null,
+    lastError: configured ? null : "ROUTER_ADDRESS is not configured",
+    feed: [],
+    reviewQueue: [],
+  };
 }
 
 const parseReviewInput: RequestHandler = (request, response, next) => {

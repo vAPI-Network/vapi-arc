@@ -6,6 +6,7 @@ import { createLiveReviewChain } from "./review/chain.js";
 import { createLiveCircleRail } from "./review/circle.js";
 import { loadReviewServiceConfig } from "./review/config.js";
 import { ReviewDatabase } from "./review/database.js";
+import { DashboardSnapshotProcessor } from "./review/dashboard-snapshot.js";
 import { DemoProcessor } from "./review/demo.js";
 import { createLiveDemoChainRail } from "./review/demo-chain.js";
 import { DemoRepository } from "./review/demo-repository.js";
@@ -41,6 +42,10 @@ async function main(): Promise<void> {
     database,
     chain,
     circle,
+  });
+  const dashboardSnapshotProcessor = new DashboardSnapshotProcessor({
+    config,
+    database,
   });
   const demoRepository = new DemoRepository(database);
   const demoProcessor = new DemoProcessor({
@@ -157,6 +162,7 @@ async function main(): Promise<void> {
     circle,
     telegram,
     processor,
+    dashboardSnapshotProcessor,
     demo: demoProcessor,
   });
   const server = createServer(app);
@@ -174,6 +180,7 @@ async function main(): Promise<void> {
     );
   });
   processor.start();
+  dashboardSnapshotProcessor.start();
   if (config.demoEnabled) demoProcessor.start();
   for (const order of [...reconciliation.orders, ...gatewayRecovery.orders]) {
     wakeReviewOrder(processor, order.id, "startup_recovery");
@@ -210,13 +217,15 @@ async function main(): Promise<void> {
       clearInterval(gatewayReconciliationTimer);
     }
     processor.stop();
+    dashboardSnapshotProcessor.stop();
     demoProcessor.stop();
     server.close(() => {
       void Promise.all([
         processor.drain(25_000),
+        dashboardSnapshotProcessor.drain(25_000),
         demoProcessor.drain(25_000),
-      ]).then(([reviewDrained, demoDrained]) => {
-        if (reviewDrained && demoDrained) database.close();
+      ]).then(([reviewDrained, dashboardDrained, demoDrained]) => {
+        if (reviewDrained && dashboardDrained && demoDrained) database.close();
         process.exit(0);
       });
     });

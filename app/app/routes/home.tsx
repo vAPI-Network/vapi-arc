@@ -8,14 +8,35 @@ import {
   StatusChip,
   TxLink,
 } from "~/components/ui";
-import { getFeedData } from "~/lib/chain.server";
+import { getDashboardChainSnapshot } from "~/lib/review-service.server";
 
 export async function loader() {
-  return getFeedData();
+  const result = await getDashboardChainSnapshot();
+  if (!result.ok) {
+    return {
+      configured: true,
+      rows: [],
+      snapshot: null,
+      serviceError: result.message,
+    };
+  }
+  return {
+    configured: result.data.configured,
+    rows: result.data.feed,
+    snapshot: result.data,
+    serviceError: null,
+  };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { configured, rows } = loaderData;
+  const { configured, rows, snapshot, serviceError } = loaderData;
+  const snapshotProblem =
+    serviceError ??
+    (snapshot?.status === "stale" || snapshot?.status === "degraded"
+      ? snapshot.lastError || "The last Arc refresh did not complete."
+      : null);
+  const indexWarming = snapshot?.status === "syncing";
+  const snapshotHasData = Boolean(snapshot?.indexedAt);
 
   return (
     <>
@@ -33,18 +54,49 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
       {!configured && <SetupBanner />}
 
+      {(snapshotProblem || indexWarming) && (
+        <aside className="service-banner" role="status">
+          <span className="service-indicator" aria-hidden="true" />
+          <div>
+            <strong>
+              {indexWarming
+                ? "Arc evidence index is warming up"
+                : snapshotHasData
+                  ? "Showing the last verified Arc snapshot"
+                  : "Arc evidence index is unavailable"}
+            </strong>
+            <p>
+              {indexWarming
+                ? "The page is ready now; verified jobs will appear when the background indexer completes its first pass."
+                : `${snapshotProblem} Navigation remains available while the background indexer retries.`}
+            </p>
+          </div>
+        </aside>
+      )}
+
       <section aria-labelledby="jobs-heading">
         <div className="section-bar">
           <h2 id="jobs-heading">Job board</h2>
-          <p>Recent 50,000 blocks · refreshes every 15 seconds</p>
+          <p>
+            {snapshot?.latestBlock
+              ? `Verified through Arc block ${snapshot.latestBlock}`
+              : "Durable Arc evidence snapshot"}
+          </p>
         </div>
 
         {rows.length === 0 ? (
           <div className="empty-state">
-            <h2>No evaluated jobs yet</h2>
+            <h2>
+              {indexWarming
+                ? "Indexing Arc receipts"
+                : serviceError || !snapshotHasData
+                  ? "Feed temporarily unavailable"
+                  : "No evaluated jobs yet"}
+            </h2>
             <p>
-              Submitted jobs assigned to the EvaluationRouter will appear here
-              with their final verdict provenance.
+              {indexWarming
+                ? "This first pass runs in the review worker and never blocks page navigation."
+                : "Submitted jobs assigned to the EvaluationRouter will appear here with their final verdict provenance."}
             </p>
           </div>
         ) : (

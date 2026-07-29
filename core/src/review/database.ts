@@ -24,6 +24,7 @@ import type {
   CircleAttempt,
   CircleOperation,
   CircleTransactionResult,
+  DashboardChainSnapshot,
   HumanEvidenceV1,
   InternalReviewOrder,
   PublicReviewOrder,
@@ -180,11 +181,25 @@ interface AIEvidenceRow {
   received_at: string;
 }
 
+interface DashboardSnapshotRow {
+  id: string;
+  version: number;
+  snapshot_json: string;
+  updated_at: string;
+}
+
 export interface StoredAIEvidence {
   evidenceHash: Hex;
   evidenceJson: string;
   evidence: AIEvidenceV1;
   receivedAt: string;
+}
+
+export interface DashboardPinnedReviewMetadata {
+  jobId: string;
+  deliverableHash: Hex | null;
+  reasonHash: Hex | null;
+  escalationTxHash: Hex | null;
 }
 
 export type TelegramUpdateReservation =
@@ -242,6 +257,8 @@ const CIRCLE_TERMINAL_FAILURES = new Set([
   "DENIED",
   "CANCELLED",
 ]);
+const DASHBOARD_CHAIN_SNAPSHOT_ID = "dashboard-chain-snapshot";
+const DASHBOARD_CHAIN_SNAPSHOT_VERSION = 1;
 
 const circleOperationColumns = {
   payout: {
@@ -431,6 +448,36 @@ function publicOrderError(order: ReviewOrder): string | null {
     default:
       return "The review order requires operator attention.";
   }
+}
+
+function isHex32(value: unknown): value is Hex {
+  return typeof value === "string" && /^0x[0-9a-fA-F]{64}$/.test(value);
+}
+
+function isDashboardChainSnapshot(
+  value: unknown,
+): value is DashboardChainSnapshot {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const snapshot = value as Partial<DashboardChainSnapshot>;
+  return (
+    snapshot.version === DASHBOARD_CHAIN_SNAPSHOT_VERSION &&
+    typeof snapshot.configured === "boolean" &&
+    (snapshot.status === "syncing" ||
+      snapshot.status === "ready" ||
+      snapshot.status === "stale" ||
+      snapshot.status === "degraded") &&
+    (snapshot.latestBlock === null ||
+      (typeof snapshot.latestBlock === "string" &&
+        /^(0|[1-9]\d*)$/.test(snapshot.latestBlock))) &&
+    (snapshot.indexedAt === null || typeof snapshot.indexedAt === "string") &&
+    (snapshot.lastAttemptAt === null ||
+      typeof snapshot.lastAttemptAt === "string") &&
+    (snapshot.lastError === null || typeof snapshot.lastError === "string") &&
+    Array.isArray(snapshot.feed) &&
+    Array.isArray(snapshot.reviewQueue)
+  );
 }
 
 export class ReviewDatabase {
@@ -624,6 +671,13 @@ export class ReviewDatabase {
         received_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS dashboard_chain_snapshots (
+        id TEXT PRIMARY KEY CHECK (id = 'dashboard-chain-snapshot'),
+        version INTEGER NOT NULL CHECK (version = 1),
+        snapshot_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS review_orders_state_idx
         ON review_orders(state, updated_at);
       CREATE INDEX IF NOT EXISTS review_assignments_order_idx
@@ -785,6 +839,138 @@ export class ReviewDatabase {
 
   close(): void {
     this.sqlite.close();
+  }
+
+  getDashboardChainSnapshot(): DashboardChainSnapshot | undefined {
+    const row = this.sqlite
+      .prepare(
+        `SELECT * FROM dashboard_chain_snapshots
+          WHERE id = ? AND version = ?`,
+      )
+      .get(
+        DASHBOARD_CHAIN_SNAPSHOT_ID,
+        DASHBOARD_CHAIN_SNAPSHOT_VERSION,
+      ) as DashboardSnapshotRow | undefined;
+    if (!row) return undefined;
+    const parsed = JSON.parse(row.snapshot_json) as unknown;
+    if (!isDashboardChainSnapshot(parsed)) {
+      throw new Error("stored dashboard chain snapshot has an invalid shape");
+    }
+    return parsed;
+  }
+
+  putDashboardChainSnapshot(snapshot: DashboardChainSnapshot): void {
+    if (!isDashboardChainSnapshot(snapshot)) {
+      throw new Error("dashboard chain snapshot has an invalid shape");
+    }
+    this.sqlite
+      .prepare(
+        `INSERT INTO dashboard_chain_snapshots (
+           id, version, snapshot_json, updated_at
+         ) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           version = excluded.version,
+           snapshot_json = excluded.snapshot_json,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        DASHBOARD_CHAIN_SNAPSHOT_ID,
+        DASHBOARD_CHAIN_SNAPSHOT_VERSION,
+        JSON.stringify(snapshot),
+        nowIso(),
+      );
+  }
+
+  listDashboardPinnedJobIds(extraJobIds: string[] = []): string[] {
+    const ids = new Set<string>();
+    for (const jobId of extraJobIds) {
+      if (/^(0|[1-9]\d*)$/.test(jobId)) ids.add(BigInt(jobId).toString());
+    }
+    const orderRows = this.sqlite
+      .prepare("SELECT job_id FROM review_orders ORDER BY created_at DESC")
+      .all() as Array<{ job_id: string }>;
+    for (const row of orderRows) ids.add(row.job_id);
+    if (this.tableExists("demo_runs")) {
+      const demoRows = this.sqlite
+        .prepare(
+          `SELECT job_id FROM demo_runs
+            WHERE job_id IS NOT NULL
+            ORDER BY created_at DESC`,
+        )
+        .all() as Array<{ job_id: string | null }>;
+      for (const row of demoRows) {
+        if (row.job_id && /^(0|[1-9]\d*)$/.test(row.job_id)) {
+          ids.add(BigInt(row.job_id).toString());
+        }
+      }
+    }
+    return [...ids];
+  }
+
+  listDashboardPinnedReviewMetadata(): DashboardPinnedReviewMetadata[] {
+    const byJob = new Map<string, DashboardPinnedReviewMetadata>();
+    const orders = this.sqlite
+      .prepare(
+        `SELECT job_id, deliverable_hash, escalation_reason_hash
+           FROM review_orders
+          ORDER BY created_at DESC`,
+      )
+      .all() as Array<{
+      job_id: string;
+      deliverable_hash: string;
+      escalation_reason_hash: string;
+    }>;
+    for (const row of orders) {
+      byJob.set(row.job_id, {
+        jobId: row.job_id,
+        deliverableHash: isHex32(row.deliverable_hash)
+          ? row.deliverable_hash
+          : null,
+        reasonHash: isHex32(row.escalation_reason_hash)
+          ? row.escalation_reason_hash
+          : null,
+        escalationTxHash: null,
+      });
+    }
+    if (this.tableExists("demo_runs")) {
+      const rows = this.sqlite
+        .prepare(
+          `SELECT job_id, deliverable_hash, escalation_tx
+             FROM demo_runs
+            WHERE job_id IS NOT NULL
+            ORDER BY created_at DESC`,
+        )
+        .all() as Array<{
+        job_id: string | null;
+        deliverable_hash: string;
+        escalation_tx: string | null;
+      }>;
+      for (const row of rows) {
+        if (!row.job_id || !/^(0|[1-9]\d*)$/.test(row.job_id)) continue;
+        const existing = byJob.get(row.job_id);
+        byJob.set(row.job_id, {
+          jobId: row.job_id,
+          deliverableHash: isHex32(row.deliverable_hash)
+            ? row.deliverable_hash
+            : (existing?.deliverableHash ?? null),
+          reasonHash: existing?.reasonHash ?? null,
+          escalationTxHash: isHex32(row.escalation_tx)
+            ? row.escalation_tx
+            : (existing?.escalationTxHash ?? null),
+        });
+      }
+    }
+    return [...byJob.values()];
+  }
+
+  private tableExists(table: string): boolean {
+    const row = this.sqlite
+      .prepare(
+        `SELECT 1 FROM sqlite_master
+          WHERE type = 'table' AND name = ?`,
+      )
+      .get(table);
+    return Boolean(row);
   }
 
   storeAIEvidence(

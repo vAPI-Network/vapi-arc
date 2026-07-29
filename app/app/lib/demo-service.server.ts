@@ -17,6 +17,7 @@ import type {
 } from "./review-service";
 
 const REQUEST_TIMEOUT_MS = 10_000;
+const READ_REQUEST_TIMEOUT_MS = 2_000;
 type JsonRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -290,7 +291,11 @@ function failure<T>(
 
 async function internalRequest(
   path: string,
-  options: { method?: "GET" | "POST"; body?: unknown } = {},
+  options: {
+    method?: "GET" | "POST";
+    body?: unknown;
+    timeoutMs?: number;
+  } = {},
 ): Promise<ReviewServiceResult<unknown>> {
   const url = endpoint(path);
   const token = process.env.REVIEW_INTERNAL_TOKEN?.trim();
@@ -313,11 +318,8 @@ async function internalRequest(
       },
       body:
         options.body === undefined ? undefined : JSON.stringify(options.body),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(options.timeoutMs ?? REQUEST_TIMEOUT_MS),
     });
-    const payload = await response
-      .json()
-      .catch(() => ({ error: `Review service returned HTTP ${response.status}` }));
     if (response.status === 401 || response.status === 403) {
       return failure(
         "unauthorized",
@@ -328,6 +330,11 @@ async function internalRequest(
       return failure("not_found", "That demo run was not found.");
     }
     if (!response.ok) {
+      const payload = await response
+        .json()
+        .catch(() => ({
+          error: `Review service returned HTTP ${response.status}`,
+        }));
       const detail = asRecord(payload);
       const nestedError = asRecord(detail?.error);
       return failure(
@@ -338,6 +345,7 @@ async function internalRequest(
         ),
       );
     }
+    const payload = await response.json().catch(() => null);
     return { ok: true, data: payload };
   } catch (error) {
     if (
@@ -346,7 +354,9 @@ async function internalRequest(
     ) {
       return failure(
         "timeout",
-        "The live demo service did not respond within ten seconds.",
+        `The live demo service did not respond within ${(
+          (options.timeoutMs ?? REQUEST_TIMEOUT_MS) / 1_000
+        ).toFixed(1)} seconds.`,
       );
     }
     return failure(
@@ -382,6 +392,7 @@ export async function getLatestDemoRun(
 > {
   const result = await internalRequest(
     `/internal/demo-runs/latest${terminalOnly ? "?terminal=true" : ""}`,
+    { timeoutMs: READ_REQUEST_TIMEOUT_MS },
   );
   if (!result.ok) {
     return result.kind === "not_found" ? { ok: true, data: null } : result;
@@ -398,6 +409,7 @@ export async function getDemoRun(
 ): Promise<ReviewServiceResult<DemoRun>> {
   const result = await internalRequest(
     `/internal/demo-runs/${encodeURIComponent(runId)}`,
+    { timeoutMs: READ_REQUEST_TIMEOUT_MS },
   );
   if (!result.ok) return result;
   try {

@@ -6,18 +6,33 @@ import {
   StatusChip,
   TxLink,
 } from "~/components/ui";
-import { getReputationData, hasConfiguredRouter } from "~/lib/chain.server";
+import {
+  getDashboardChainSnapshot,
+  reputationFromSnapshot,
+} from "~/lib/review-service.server";
 
 export async function loader({ params }: Route.LoaderArgs) {
-  const reputation = await getReputationData(params.address);
+  const snapshot = await getDashboardChainSnapshot();
+  if (!snapshot.ok) {
+    throw new Response(snapshot.message, { status: 503 });
+  }
+  const reputation = reputationFromSnapshot(params.address, snapshot.data);
   return {
-    configured: hasConfiguredRouter(),
+    configured: snapshot.data.configured,
     reputation,
+    snapshot: {
+      status: snapshot.data.status,
+      indexedAt: snapshot.data.indexedAt,
+      latestBlock: snapshot.data.latestBlock,
+      lastError: snapshot.data.lastError,
+    },
   };
 }
 
 export default function Provider({ loaderData }: Route.ComponentProps) {
-  const { configured, reputation } = loaderData;
+  const { configured, reputation, snapshot } = loaderData;
+  const snapshotProblem =
+    snapshot.status === "stale" || snapshot.status === "degraded";
   const reliability =
     reputation.reliability === null
       ? "unrated"
@@ -43,6 +58,20 @@ export default function Provider({ loaderData }: Route.ComponentProps) {
       </div>
 
       {!configured && <SetupBanner />}
+
+      {snapshotProblem && (
+        <aside className="service-banner" role="status">
+          <span className="service-indicator" aria-hidden="true" />
+          <div>
+            <strong>Showing the last verified reputation snapshot</strong>
+            <p>
+              Verified through Arc block {snapshot.latestBlock}.{" "}
+              {snapshot.lastError ||
+                "The background indexer is refreshing this history."}
+            </p>
+          </div>
+        </aside>
+      )}
 
       <section className="stats-grid" aria-label="Provider statistics">
         <div className="stat">
