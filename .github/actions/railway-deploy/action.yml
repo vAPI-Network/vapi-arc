@@ -49,6 +49,7 @@ runs:
 
         revision="$(git rev-parse HEAD)"
 
+        set +e
         upload_json="$(
           railway up \
             --project "$PROJECT_ID" \
@@ -59,6 +60,14 @@ runs:
             --json \
             --message "GitHub Actions ${revision}"
         )"
+        upload_exit=$?
+        set -e
+
+        if [[ "$upload_exit" -ne 0 ]]; then
+          echo "::error::Railway upload failed for ${SERVICE_NAME} (exit ${upload_exit}). Verify that RAILWAY_TOKEN is a project token scoped to ${RAILWAY_ENVIRONMENT}."
+          exit "$upload_exit"
+        fi
+
         deployment_id="$(
           jq -r '.deploymentId // .id // empty' <<< "$upload_json"
         )"
@@ -184,7 +193,11 @@ runs:
         )"
         current_id="$(jq -r '.deploymentId // empty' <<< "$service_state")"
         current_status="$(jq -r '.status // empty' <<< "$service_state")"
-        stopped="$(jq -r '.stopped // true' <<< "$service_state")"
+        stopped="$(
+          jq -r \
+            'if has("stopped") then .stopped else true end' \
+            <<< "$service_state"
+        )"
 
         if [[ "$DEPLOYMENT_STATUS" == "SUCCESS" &&
               "$current_id" != "$DEPLOYMENT_ID" ]]; then
