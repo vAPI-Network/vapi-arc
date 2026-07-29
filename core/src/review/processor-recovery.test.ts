@@ -132,6 +132,103 @@ describe("review financial recovery", () => {
     database.close();
   });
 
+  it("retries a rejected refund request with the same idempotency key", async () => {
+    const database = new ReviewDatabase(":memory:");
+    const order = createPaidOrder(database, "94");
+    database.updateOrder(order.id, "expired");
+    const keys: string[] = [];
+    const circle: CircleRail = {
+      async transfer(input) {
+        keys.push(input.idempotencyKey);
+        if (keys.length === 1) throw new Error("API parameter invalid");
+        return { id: "refund-retried", state: "COMPLETE", txHash: REFUND_TX };
+      },
+      async resolve() {
+        assert.fail("refunds do not resolve escrow");
+      },
+      async getTransaction(id) {
+        return { id, state: "COMPLETE", txHash: REFUND_TX };
+      },
+    };
+    const processor = new ReviewProcessor({
+      database,
+      config: config(),
+      circle,
+    });
+
+    await processor.processOrder(order.id);
+    const rejected = database.getOrder(order.id)!;
+    assert.equal(rejected.state, "expired");
+    assert.equal(rejected.circleRefundId, null);
+    assert.equal(rejected.lastError, "API parameter invalid");
+    assert.equal(
+      database.hasCurrentCircleRequestStarted(order.id, "refund"),
+      true,
+    );
+
+    await processor.processOrder(order.id);
+    const refunded = database.getOrder(order.id)!;
+    assert.equal(refunded.state, "refunded");
+    assert.equal(refunded.circleRefundId, "refund-retried");
+    assert.equal(refunded.refundTransactionHash, REFUND_TX);
+    assert.deepEqual(keys, [
+      order.refundIdempotencyKey,
+      order.refundIdempotencyKey,
+    ]);
+    assert.equal(
+      database
+        .listEvents(order.id)
+        .filter((event) => event.type === "review_refunded").length,
+      1,
+    );
+    database.close();
+  });
+
+  it("polls a created refund after losing its first response", async () => {
+    const database = new ReviewDatabase(":memory:");
+    const order = createPaidOrder(database, "95");
+    database.updateOrder(order.id, "expired");
+    let transfers = 0;
+    let polls = 0;
+    const circle: CircleRail = {
+      async transfer(input) {
+        transfers += 1;
+        input.onCreated?.({
+          id: "refund-created",
+          state: "INITIATED",
+          txHash: null,
+        });
+        throw new Error("Circle response lost after creation");
+      },
+      async resolve() {
+        assert.fail("refunds do not resolve escrow");
+      },
+      async getTransaction(id) {
+        polls += 1;
+        assert.equal(id, "refund-created");
+        return { id, state: "COMPLETE", txHash: REFUND_TX };
+      },
+    };
+    const processor = new ReviewProcessor({
+      database,
+      config: config(),
+      circle,
+    });
+
+    await processor.processOrder(order.id);
+    const pending = database.getOrder(order.id)!;
+    assert.equal(pending.state, "expired");
+    assert.equal(pending.circleRefundId, "refund-created");
+
+    await processor.processOrder(order.id);
+    const refunded = database.getOrder(order.id)!;
+    assert.equal(refunded.state, "refunded");
+    assert.equal(refunded.refundTransactionHash, REFUND_TX);
+    assert.equal(transfers, 1);
+    assert.equal(polls, 1);
+    database.close();
+  });
+
   it("keeps polling a STUCK refund without rotating or permitting operator resume", async () => {
     const database = new ReviewDatabase(":memory:");
     const order = createPaidOrder(database, "93");

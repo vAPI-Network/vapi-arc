@@ -20,6 +20,8 @@ const circleSdk = createRequire(import.meta.url)(
   "@circle-fin/developer-controlled-wallets",
 ) as typeof import("@circle-fin/developer-controlled-wallets");
 
+const ARC_TESTNET_BLOCKCHAIN = "ARC-TESTNET" as const;
+
 export interface CircleRail {
   transfer(input: {
     destination: Address;
@@ -96,7 +98,8 @@ export class LiveCircleRail implements CircleRail {
     onCreated?: (transaction: CircleTransactionResult) => void;
   }): Promise<CircleTransactionResult> {
     const created = await this.client.createTransaction({
-      walletId: this.config.circleWalletId!,
+      walletAddress: this.config.circleWalletAddress!,
+      blockchain: ARC_TESTNET_BLOCKCHAIN,
       tokenAddress: this.config.usdcTokenAddress,
       amount: [usdcUnitsToDecimal(input.amount)],
       destinationAddress: getAddress(input.destination),
@@ -172,9 +175,9 @@ export class LiveCircleRail implements CircleRail {
         "CIRCLE_WALLET_ID and CIRCLE_WALLET_ADDRESS refer to different wallets",
       );
     }
-    if (wallet.blockchain !== "ARC-TESTNET") {
+    if (wallet.blockchain !== ARC_TESTNET_BLOCKCHAIN) {
       throw new Error(
-        `Circle wallet must use ARC-TESTNET, received ${wallet.blockchain}`,
+        `Circle wallet must use ${ARC_TESTNET_BLOCKCHAIN}, received ${wallet.blockchain}`,
       );
     }
     await this.checkTreasuryBalance();

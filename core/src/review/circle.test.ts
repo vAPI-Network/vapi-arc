@@ -46,9 +46,11 @@ function testConfig(): ReviewServiceConfig {
 
 describe("Circle treasury balance cache", () => {
   it("invalidates when a transfer is created and again when it completes", async () => {
-    const rail = new LiveCircleRail(testConfig());
+    const config = testConfig();
+    const rail = new LiveCircleRail(config);
     let releaseCompletion!: () => void;
     let signalPolling!: () => void;
+    let transferRequest: Record<string, unknown> | undefined;
     const completionGate = new Promise<void>((resolve) => {
       releaseCompletion = resolve;
     });
@@ -57,7 +59,8 @@ describe("Circle treasury balance cache", () => {
     });
     Object.defineProperty(rail, "client", {
       value: {
-        async createTransaction() {
+        async createTransaction(input: Record<string, unknown>) {
+          transferRequest = input;
           return { data: { id: "circle-payout-1" } };
         },
         async getTransaction() {
@@ -95,6 +98,21 @@ describe("Circle treasury balance cache", () => {
     });
     await pollingStarted;
     assert.equal(internal.treasuryBalanceCache, undefined);
+    assert.deepEqual(transferRequest, {
+      walletAddress: config.circleWalletAddress,
+      blockchain: "ARC-TESTNET",
+      tokenAddress: config.usdcTokenAddress,
+      amount: ["0.2"],
+      destinationAddress: getAddress(
+        "0x4444444444444444444444444444444444444444",
+      ),
+      fee: {
+        type: "level",
+        config: { feeLevel: "MEDIUM" },
+      },
+      idempotencyKey: "payout-key",
+      refId: "vapi-review-payout:test",
+    });
 
     internal.treasuryBalanceCache = {
       expiresAt: Date.now() + 30_000,
