@@ -62,6 +62,8 @@ const RETRYABLE_TRANSACTION_BY_OPERATION: Partial<
   submit_deliverable: "submit",
   wait_for_refund_eligibility: "escrowRefund",
 };
+const READY_READINESS_CACHE_MS = 30_000;
+const BLOCKED_READINESS_CACHE_MS = 2_000;
 
 export interface DemoController {
   readiness(): Promise<DemoReadiness>;
@@ -90,6 +92,11 @@ export class DemoProcessor implements DemoController {
   private interval?: NodeJS.Timeout;
   private activeSweeps = 0;
   private walletMutationTail: Promise<void> = Promise.resolve();
+  private readinessCache?: {
+    value: DemoReadiness;
+    expiresAt: number;
+  };
+  private readinessInFlight?: Promise<DemoReadiness>;
 
   constructor(private readonly dependencies: DemoProcessorDependencies) {}
 
@@ -120,6 +127,31 @@ export class DemoProcessor implements DemoController {
   }
 
   async readiness(): Promise<DemoReadiness> {
+    const cached = this.readinessCache;
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    if (this.readinessInFlight) return this.readinessInFlight;
+
+    const check = this.checkReadiness();
+    this.readinessInFlight = check;
+    try {
+      const value = await check;
+      this.readinessCache = {
+        value,
+        expiresAt:
+          Date.now() +
+          (value.ready
+            ? READY_READINESS_CACHE_MS
+            : BLOCKED_READINESS_CACHE_MS),
+      };
+      return value;
+    } finally {
+      if (this.readinessInFlight === check) {
+        this.readinessInFlight = undefined;
+      }
+    }
+  }
+
+  private async checkReadiness(): Promise<DemoReadiness> {
     const { config, database, chain, circle } = this.dependencies;
     const checks: DemoReadinessCheck[] = [];
     const enabled = config.demoEnabled === true;
