@@ -218,3 +218,138 @@ export interface CircleAttempt {
   createdAt: string;
   updatedAt: string;
 }
+
+export const demoRunStates = [
+  "queued",
+  "preparing_escrow",
+  "awaiting_escalation",
+  "awaiting_purchase",
+  "purchasing_review",
+  "review_active",
+  "finalized",
+  "failed",
+  "archived_refund_pending",
+  "archived_refunded",
+] as const;
+
+export type DemoRunState = (typeof demoRunStates)[number];
+
+export const demoTransactionKeys = [
+  "createJob",
+  "setLane",
+  "setBudget",
+  "approval",
+  "fund",
+  "submit",
+  "escalation",
+  "payment",
+  "payout",
+  "resolution",
+  "reviewRefund",
+  "escrowRefund",
+] as const;
+
+export type DemoTransactionKey = (typeof demoTransactionKeys)[number];
+
+export type DemoTransactions = Record<DemoTransactionKey, string | null>;
+
+export interface DemoRun {
+  id: string;
+  requestId: string;
+  scenario: "human-only";
+  scenarioVersion: "human-review-v1";
+  state: DemoRunState;
+  currentOperation: string | null;
+  recoveryState: DemoRunState | null;
+  jobId: string | null;
+  orderId: string | null;
+  title: string;
+  description: string;
+  acceptanceCriteria: string;
+  deliverableContent: string;
+  deliverableHash: Hex;
+  clientAddress: Address;
+  providerAddress: Address;
+  budget: string;
+  reviewPrice: string;
+  reward: string;
+  expiresAt: string;
+  chainStartBlock: string | null;
+  completedSteps: string[];
+  transactions: DemoTransactions;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  onChainVerified: boolean;
+  lastError: string | null;
+}
+
+export interface DemoRunEvent {
+  id: number;
+  runId: string;
+  type: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface DemoRunCapabilities {
+  canPurchase: boolean;
+  canRetry: boolean;
+  canArchive: boolean;
+  isTerminal: boolean;
+}
+
+export interface PublicDemoRun extends Omit<
+  DemoRun,
+  "recoveryState" | "chainStartBlock" | "completedSteps"
+> {
+  events: Array<Omit<DemoRunEvent, "runId">>;
+  reviewOrder:
+    | (PublicReviewOrder & {
+        evidenceVerified: boolean | null;
+        claimExpiresAt: string | null;
+        dispatchCount: number;
+      })
+    | null;
+  capabilities: DemoRunCapabilities;
+}
+
+export interface DemoReadinessCheck {
+  key: string;
+  label: string;
+  status: "ready" | "warning" | "blocked";
+  message: string;
+}
+
+export interface DemoReadiness {
+  ready: boolean;
+  enabled: boolean;
+  checks: DemoReadinessCheck[];
+  amounts: {
+    escrowBudget: string;
+    reviewPrice: string;
+    reviewerReward: string;
+  };
+  limits: {
+    maxRunsPerHour: number;
+    jobTtlSeconds: number;
+  };
+  addresses: {
+    client: Address | null;
+    provider: Address | null;
+    reviewer: Address | null;
+    resolver: Address | null;
+    seller: Address | null;
+    commerce: Address | null;
+    router: Address | null;
+  };
+  balances: {
+    clientEscrow: string | null;
+    clientGas: string | null;
+    providerGas: string | null;
+    gatewayAvailable: string | null;
+    gatewayTotal: string | null;
+    circleTreasury: string | null;
+  };
+  checkedAt: string;
+}

@@ -6,6 +6,9 @@ import { createLiveReviewChain } from "./review/chain.js";
 import { createLiveCircleRail } from "./review/circle.js";
 import { loadReviewServiceConfig } from "./review/config.js";
 import { ReviewDatabase } from "./review/database.js";
+import { DemoProcessor } from "./review/demo.js";
+import { createLiveDemoChainRail } from "./review/demo-chain.js";
+import { DemoRepository } from "./review/demo-repository.js";
 import { validateEscalatedReview } from "./review/eligibility.js";
 import {
   GatewayReservationReconciler,
@@ -38,6 +41,17 @@ async function main(): Promise<void> {
     database,
     chain,
     circle,
+  });
+  const demoRepository = new DemoRepository(database);
+  const demoProcessor = new DemoProcessor({
+    config,
+    database,
+    repository: demoRepository,
+    chain: createLiveDemoChainRail(config),
+    circle,
+    wakeReviewOrder(orderId, source) {
+      wakeReviewOrder(processor, orderId, source);
+    },
   });
   const telegram = createTelegramGateway(config, database, {
     onVerdict(order) {
@@ -100,7 +114,13 @@ async function main(): Promise<void> {
             );
             assertSameRecoveryJob(intent.validatedJob, freshJob);
             if (
-              database.listEligibleReviewers(freshJob.client, freshJob.provider)
+              database.listEligibleReviewers(
+                freshJob.client,
+                freshJob.provider,
+                config.circleWalletAddress
+                  ? [config.circleWalletAddress]
+                  : [],
+              )
                 .length === 0
             ) {
               throw new Error(
@@ -137,6 +157,7 @@ async function main(): Promise<void> {
     circle,
     telegram,
     processor,
+    demo: demoProcessor,
   });
   const server = createServer(app);
   server.listen(config.port, () => {
@@ -153,6 +174,7 @@ async function main(): Promise<void> {
     );
   });
   processor.start();
+  if (config.demoEnabled) demoProcessor.start();
   for (const order of [...reconciliation.orders, ...gatewayRecovery.orders]) {
     wakeReviewOrder(processor, order.id, "startup_recovery");
   }
@@ -188,9 +210,13 @@ async function main(): Promise<void> {
       clearInterval(gatewayReconciliationTimer);
     }
     processor.stop();
+    demoProcessor.stop();
     server.close(() => {
-      void processor.drain(25_000).then((drained) => {
-        if (drained) database.close();
+      void Promise.all([
+        processor.drain(25_000),
+        demoProcessor.drain(25_000),
+      ]).then(([reviewDrained, demoDrained]) => {
+        if (reviewDrained && demoDrained) database.close();
         process.exit(0);
       });
     });

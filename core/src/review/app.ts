@@ -24,6 +24,7 @@ import {
 } from "./circle-webhook.js";
 import type { ReviewServiceConfig } from "./config.js";
 import { ReviewDatabase } from "./database.js";
+import type { DemoController } from "./demo.js";
 import { verifiedEscalationJob } from "./eligibility.js";
 import { verifyHumanEvidence } from "./evidence.js";
 import { parseGatewayPaymentReservation } from "./gateway.js";
@@ -77,6 +78,13 @@ const circleOperationResumeInputSchema = z
   })
   .strict();
 
+const createDemoRunInputSchema = z
+  .object({
+    requestId: z.uuid(),
+    scenario: z.literal("human-only"),
+  })
+  .strict();
+
 type ReviewOrderInput = z.infer<typeof reviewOrderInputSchema>;
 
 interface ReviewRequest extends Request {
@@ -98,6 +106,7 @@ export interface ReviewAppDependencies {
   circle?: CircleRail;
   telegram?: TelegramGateway;
   processor: ReviewProcessor;
+  demo?: DemoController;
   paymentMiddleware?: RequestHandler;
   circleWebhookVerifier?: CircleWebhookVerifier;
 }
@@ -536,6 +545,134 @@ export function createReviewApp(dependencies: ReviewAppDependencies) {
     }),
   );
 
+  app.get(
+    "/internal/demo/readiness",
+    requireInternalToken(config),
+    wrap(async (request, response) => {
+      if (!dependencies.demo) {
+        response.status(503).json(
+          errorBody(
+            "demo_not_configured",
+            "The live demo orchestrator is not configured",
+          ),
+        );
+        return;
+      }
+      response.set("cache-control", "no-store").json({
+        readiness: await dependencies.demo.readiness(),
+      });
+    }),
+  );
+
+  app.post(
+    "/internal/demo-runs",
+    requireInternalToken(config),
+    wrap(async (request, response) => {
+      if (!dependencies.demo) {
+        response.status(503).json(
+          errorBody(
+            "demo_not_configured",
+            "The live demo orchestrator is not configured",
+          ),
+        );
+        return;
+      }
+      const parsed = createDemoRunInputSchema.safeParse(request.body);
+      if (!parsed.success) {
+        response.status(400).json(
+          errorBody(
+            "invalid_demo_run_request",
+            "requestId must be a UUID and scenario must be human-only",
+            parsed.error.issues,
+          ),
+        );
+        return;
+      }
+      const { run } = await dependencies.demo.createRun(parsed.data.requestId);
+      response.status(202).set("cache-control", "no-store").json({
+        runId: run.id,
+        state: run.state,
+        statusUrl: `${config.publicBaseUrl}/internal/demo-runs/${run.id}`,
+      });
+    }),
+  );
+
+  app.get(
+    "/internal/demo-runs/latest",
+    requireInternalToken(config),
+    wrap(async (request, response) => {
+      if (!dependencies.demo) {
+        response.status(503).json(
+          errorBody(
+            "demo_not_configured",
+            "The live demo orchestrator is not configured",
+          ),
+        );
+        return;
+      }
+      response
+        .set("cache-control", "no-store")
+        .json({
+          run: dependencies.demo.latest(
+            request.query.terminal === "true",
+          ),
+        });
+    }),
+  );
+
+  app.get(
+    "/internal/demo-runs/:runId",
+    requireInternalToken(config),
+    wrap(async (request, response) => {
+      if (!dependencies.demo) {
+        response.status(503).json(
+          errorBody(
+            "demo_not_configured",
+            "The live demo orchestrator is not configured",
+          ),
+        );
+        return;
+      }
+      const runId = demoRunId(request, response);
+      if (!runId) return;
+      const run = dependencies.demo.getRun(runId);
+      if (!run) {
+        response
+          .status(404)
+          .json(errorBody("demo_run_not_found", "Demo run was not found"));
+        return;
+      }
+      response.set("cache-control", "no-store").json({ run });
+    }),
+  );
+
+  for (const action of ["purchase", "retry", "archive"] as const) {
+    app.post(
+      `/internal/demo-runs/:runId/${action}`,
+      requireInternalToken(config),
+      wrap(async (request, response) => {
+        if (!dependencies.demo) {
+          response.status(503).json(
+            errorBody(
+              "demo_not_configured",
+              "The live demo orchestrator is not configured",
+            ),
+          );
+          return;
+        }
+        const runId = demoRunId(request, response);
+        if (!runId) return;
+        const run =
+          action === "purchase"
+            ? dependencies.demo.purchase(runId)
+            : action === "retry"
+              ? dependencies.demo.retry(runId)
+              : dependencies.demo.archive(runId);
+        response.status(202).set("cache-control", "no-store").json({ run });
+      }),
+    );
+  }
+
   app.post(
     "/internal/review-orders/:orderId/resume",
     requireInternalToken(config),
@@ -733,6 +870,10 @@ export function createReviewApp(dependencies: ReviewAppDependencies) {
       typeof error.code === "string"
         ? error.code
         : "internal_error";
+    const details =
+      typeof error === "object" && error !== null && "details" in error
+        ? error.details
+        : undefined;
     response
       .status(statusCode)
       .json(
@@ -743,11 +884,24 @@ export function createReviewApp(dependencies: ReviewAppDependencies) {
             : error instanceof Error
               ? error.message
               : String(error),
+          details,
         ),
       );
   };
   app.use(errorHandler);
   return app;
+}
+
+function demoRunId(request: Request, response: Response): string | undefined {
+  const raw = request.params.runId;
+  const runId = Array.isArray(raw) ? (raw[0] ?? "") : (raw ?? "");
+  if (!z.uuid().safeParse(runId).success) {
+    response
+      .status(400)
+      .json(errorBody("invalid_demo_run_id", "runId must be a UUID"));
+    return undefined;
+  }
+  return runId;
 }
 
 const parseReviewInput: RequestHandler = (request, response, next) => {
@@ -851,7 +1005,13 @@ function requireEligibleReviewer(
       return;
     }
     if (
-      dependencies.database.listEligibleReviewers(job.client, job.provider)
+      dependencies.database.listEligibleReviewers(
+        job.client,
+        job.provider,
+        dependencies.config.circleWalletAddress
+          ? [dependencies.config.circleWalletAddress]
+          : [],
+      )
         .length === 0
     ) {
       response

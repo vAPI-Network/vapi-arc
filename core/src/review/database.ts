@@ -1013,16 +1013,23 @@ export class ReviewDatabase {
     return rows.map(reviewerFromRow);
   }
 
-  listEligibleReviewers(client: Address, provider: Address): Reviewer[] {
+  listEligibleReviewers(
+    client: Address,
+    provider: Address,
+    additionalConflicts: Address[] = [],
+  ): Reviewer[] {
+    const conflicts = [client, provider, ...additionalConflicts];
+    const clauses = conflicts
+      .map(() => "lower(payout_address) != lower(?)")
+      .join(" AND ");
     const rows = this.sqlite
       .prepare(
         `SELECT * FROM reviewers
           WHERE active = 1
-            AND lower(payout_address) != lower(?)
-            AND lower(payout_address) != lower(?)
+            AND ${clauses}
           ORDER BY created_at`,
       )
-      .all(client, provider) as unknown as ReviewerRow[];
+      .all(...conflicts) as unknown as ReviewerRow[];
     return rows.map(reviewerFromRow);
   }
 
@@ -2158,6 +2165,7 @@ export class ReviewDatabase {
     orderId: string,
     reviewerId: string,
     reviewSlaSeconds: number,
+    additionalConflicts: Address[] = [],
   ): ReviewOrder {
     return this.transaction(() => {
       const order = this.getOrder(orderId);
@@ -2187,9 +2195,16 @@ export class ReviewDatabase {
       if (
         reviewer.payoutAddress.toLowerCase() ===
           order.jobClient.toLowerCase() ||
-        reviewer.payoutAddress.toLowerCase() === order.jobProvider.toLowerCase()
+        reviewer.payoutAddress.toLowerCase() ===
+          order.jobProvider.toLowerCase() ||
+        additionalConflicts.some(
+          (address) =>
+            reviewer.payoutAddress.toLowerCase() === address.toLowerCase(),
+        )
       ) {
-        throw new Error("client/provider conflicts cannot claim this review");
+        throw new Error(
+          "client/provider/resolver conflicts cannot claim this review",
+        );
       }
       const result = this.sqlite
         .prepare(

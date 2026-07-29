@@ -6,6 +6,7 @@ import type {
   Reviewer,
   ReviewOrder,
 } from "./types.js";
+import { TelegramVerdictPromptStore } from "./telegram-prompt-store.js";
 
 interface TelegramUser {
   id: number;
@@ -20,6 +21,7 @@ interface TelegramMessage {
   from?: TelegramUser;
   chat: TelegramChat;
   text?: string;
+  reply_to_message?: TelegramMessage;
 }
 
 interface TelegramCallbackQuery {
@@ -82,6 +84,7 @@ function parseVerdictCommand(
 
 export class TelegramBotGateway implements TelegramGateway {
   private readonly baseUrl: string;
+  private readonly promptStore: TelegramVerdictPromptStore;
 
   constructor(
     private readonly token: string,
@@ -90,6 +93,7 @@ export class TelegramBotGateway implements TelegramGateway {
     private readonly callbacks: TelegramWorkflowCallbacks,
   ) {
     this.baseUrl = `https://api.telegram.org/bot${token}`;
+    this.promptStore = new TelegramVerdictPromptStore(database);
   }
 
   private async call<T>(
@@ -209,15 +213,26 @@ export class TelegramBotGateway implements TelegramGateway {
     const message = update.message;
     if (!message?.from || !message.text) return;
     const command = parseVerdictCommand(message.text);
-    if (!command) {
-      if (message.text.startsWith("/verdict")) {
-        await this.sendText(
-          String(message.chat.id),
-          "Usage: /verdict <order-id> approve|reject <reason of 10–1000 characters>",
-        );
-      }
+    if (command) {
+      await this.handleLegacyVerdict(message, command);
       return;
     }
+    if (message.text.startsWith("/verdict")) {
+      await this.sendText(
+        String(message.chat.id),
+        "Usage: /verdict <order-id> approve|reject <reason of 10–1000 characters>",
+      );
+      return;
+    }
+    if (message.reply_to_message) {
+      await this.handleReasonReply(message);
+    }
+  }
+
+  private async getMessageReviewer(
+    message: TelegramMessage,
+  ): Promise<Reviewer | undefined> {
+    if (!message.from) return undefined;
     const reviewer = this.database.getReviewerByTelegramUserId(
       String(message.from.id),
     );
@@ -226,16 +241,121 @@ export class TelegramBotGateway implements TelegramGateway {
         String(message.chat.id),
         "This Telegram account is not an active vAPI reviewer.",
       );
+      return undefined;
+    }
+    if (String(message.chat.id) !== reviewer.telegramChatId) {
+      await this.sendText(
+        String(message.chat.id),
+        "Review actions must be completed in your registered vAPI reviewer chat.",
+      );
+      return undefined;
+    }
+    return reviewer;
+  }
+
+  private async handleLegacyVerdict(
+    message: TelegramMessage,
+    command: {
+      orderId: string;
+      decision: ReviewDecision;
+      reasoning: string;
+    },
+  ): Promise<void> {
+    const reviewer = await this.getMessageReviewer(message);
+    if (!reviewer) return;
+    await this.submitVerdictAndNotify(
+      reviewer,
+      command.orderId,
+      command.decision,
+      command.reasoning,
+    );
+  }
+
+  private async handleReasonReply(message: TelegramMessage): Promise<void> {
+    const reviewer = await this.getMessageReviewer(message);
+    if (!reviewer || !message.from || !message.reply_to_message) return;
+    const lookup = this.promptStore.lookupReply({
+      reviewerId: reviewer.id,
+      telegramUserId: String(message.from.id),
+      telegramChatId: String(message.chat.id),
+      promptMessageId: String(message.reply_to_message.message_id),
+    });
+    if (lookup.status !== "active") {
+      const explanation: Record<
+        Exclude<typeof lookup.status, "active">,
+        string
+      > = {
+        not_found:
+          "That message is not an active vAPI verdict prompt. Choose Approve or Reject again.",
+        not_authorized:
+          "That verdict prompt belongs to a different reviewer.",
+        consumed: "That verdict prompt has already been used.",
+        superseded:
+          "A newer verdict prompt replaced that one. Reply to the latest bot message.",
+        expired:
+          "That verdict prompt expired. The review can no longer accept this reply.",
+      };
+      await this.sendText(
+        reviewer.telegramChatId,
+        explanation[lookup.status],
+      );
       return;
     }
+    const reasoning = message.text?.trim() ?? "";
+    if (reasoning.length < 10 || reasoning.length > 1_000) {
+      await this.sendText(
+        reviewer.telegramChatId,
+        "Please reply to the same prompt with a reason of 10–1000 characters.",
+      );
+      return;
+    }
+    const order = this.database.getOrder(lookup.prompt.orderId);
+    if (
+      !order ||
+      order.state !== "claimed" ||
+      order.reviewerId !== reviewer.id
+    ) {
+      await this.sendText(
+        reviewer.telegramChatId,
+        "This review is no longer awaiting your verdict.",
+      );
+      return;
+    }
+    await this.submitVerdictAndNotify(
+      reviewer,
+      order.id,
+      lookup.prompt.decision,
+      reasoning,
+      lookup.prompt.id,
+    );
+  }
+
+  private async submitVerdictAndNotify(
+    reviewer: Reviewer,
+    orderId: string,
+    decision: ReviewDecision,
+    reasoning: string,
+    promptId?: string,
+  ): Promise<void> {
     try {
       const order = this.database.submitVerdict(
-        command.orderId,
+        orderId,
         reviewer.id,
-        command.decision,
-        command.reasoning,
+        decision,
+        reasoning,
         this.config.reviewSlaSeconds,
       );
+      try {
+        if (promptId) {
+          this.promptStore.consume(promptId);
+        } else {
+          this.promptStore.supersedeActive(order.id, reviewer.id);
+        }
+      } catch (error) {
+        this.database.addEvent(order.id, "telegram_prompt_finalize_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       await this.sendText(
         reviewer.telegramChatId,
         `Verdict recorded for job ${order.jobId}. Payout and Arc settlement are now processing.`,
@@ -273,21 +393,54 @@ export class TelegramBotGateway implements TelegramGateway {
       return;
     }
     try {
+      if (
+        !query.message ||
+        String(query.message.chat.id) !== reviewer.telegramChatId
+      ) {
+        throw new Error(
+          "Use this action in your registered vAPI reviewer chat",
+        );
+      }
       const order = this.database.getOrder(orderId);
       if (!order) throw new Error("review order not found");
       if (action === "approve" || action === "reject") {
         if (order.state !== "claimed" || order.reviewerId !== reviewer.id) {
           throw new Error("Only the assigned reviewer can decide this order");
         }
+        const deadline = this.reviewDeadline(order);
+        const decision = action as ReviewDecision;
+        const promptMessage = await this.sendReasonPrompt(
+          reviewer,
+          order,
+          decision,
+        );
+        this.promptStore.create({
+          orderId: order.id,
+          reviewerId: reviewer.id,
+          telegramUserId: reviewer.telegramUserId,
+          telegramChatId: reviewer.telegramChatId,
+          decision,
+          promptMessageId: String(promptMessage.message_id),
+          expiresAt: deadline,
+        });
+        this.database.addEvent(order.id, "telegram_reason_prompted", {
+          reviewerId: reviewer.id,
+          decision,
+          promptMessageId: String(promptMessage.message_id),
+          expiresAt: deadline,
+        });
         await this.answerCallback(
           query.id,
           `${action === "approve" ? "Approve" : "Reject"} selected`,
         );
-        await this.sendText(
-          reviewer.telegramChatId,
-          `Add your reason with:\n/verdict ${order.id} ${action} <reason of 10–1000 characters>`,
-        );
         return;
+      }
+      const assignment = this.database.getAssignment(order.id, reviewer.id);
+      if (
+        !assignment ||
+        assignment.telegramMessageId !== String(query.message.message_id)
+      ) {
+        throw new Error("This review offer is no longer active");
       }
       if (
         sameAddress(reviewer.payoutAddress, order.jobClient) ||
@@ -295,13 +448,16 @@ export class TelegramBotGateway implements TelegramGateway {
       ) {
         throw new Error("client/provider conflicts cannot claim this review");
       }
-      this.database.claimOrder(
+      const claimed = this.database.claimOrder(
         orderId,
         reviewer.id,
         this.config.reviewSlaSeconds,
+        this.config.circleWalletAddress
+          ? [this.config.circleWalletAddress]
+          : [],
       );
       await this.answerCallback(query.id, "Review claimed");
-      await this.sendDecisionPrompt(reviewer.telegramChatId, order);
+      await this.sendDecisionPrompt(reviewer.telegramChatId, claimed);
     } catch (error) {
       await this.answerCallback(
         query.id,
@@ -345,6 +501,34 @@ export class TelegramBotGateway implements TelegramGateway {
             },
           ],
         ],
+      },
+    });
+  }
+
+  private reviewDeadline(order: ReviewOrder): string {
+    const createdAt = Date.parse(order.createdAt);
+    const expiresAt = createdAt + this.config.reviewSlaSeconds * 1_000;
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw new Error("review SLA has elapsed");
+    }
+    return new Date(expiresAt).toISOString();
+  }
+
+  private sendReasonPrompt(
+    reviewer: Reviewer,
+    order: ReviewOrder,
+    decision: ReviewDecision,
+  ): Promise<TelegramMessage> {
+    return this.call<TelegramMessage>("sendMessage", {
+      chat_id: reviewer.telegramChatId,
+      text: [
+        `${decision === "approve" ? "Approve" : "Reject"} selected for job ${order.jobId}.`,
+        "Reply to this message with your written reason only (10–1000 characters).",
+      ].join("\n"),
+      reply_markup: {
+        force_reply: true,
+        selective: true,
+        input_field_placeholder: "Explain your verdict…",
       },
     });
   }

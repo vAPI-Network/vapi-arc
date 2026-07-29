@@ -45,6 +45,7 @@ jobs:
           RAILWAY_JUDGE_SERVICE_ID: ${{ vars.RAILWAY_JUDGE_SERVICE_ID }}
           WEB_URL: ${{ vars.WEB_URL }}
           REVIEW_URL: ${{ vars.REVIEW_URL }}
+          REVIEW_INTERNAL_TOKEN: ${{ secrets.REVIEW_INTERNAL_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -55,7 +56,8 @@ jobs:
             RAILWAY_REVIEW_SERVICE_ID \
             RAILWAY_JUDGE_SERVICE_ID \
             WEB_URL \
-            REVIEW_URL; do
+            REVIEW_URL \
+            REVIEW_INTERNAL_TOKEN; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::GitHub production configuration is missing ${name}"
               exit 1
@@ -167,10 +169,47 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
+  smoke-demo:
+    name: Verify live demo rails
+    needs: [preflight, deploy-review, deploy-judge, deploy-web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Check authenticated readiness and locked demo
+        env:
+          REVIEW_URL: ${{ vars.REVIEW_URL }}
+          WEB_URL: ${{ vars.WEB_URL }}
+          REVIEW_INTERNAL_TOKEN: ${{ secrets.REVIEW_INTERNAL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          readiness="$(curl --fail --silent --show-error \
+            --retry 8 --retry-delay 3 --retry-all-errors \
+            --header "Authorization: Bearer ${REVIEW_INTERNAL_TOKEN}" \
+            "${REVIEW_URL}/internal/demo/readiness")"
+          if [[ "$(jq -r '.readiness.ready' <<<"$readiness")" != "true" ]]; then
+            jq '.readiness | {ready, checks}' <<<"$readiness"
+            echo "::error::Live demo readiness is blocked after deployment"
+            exit 1
+          fi
+
+          demo_html="$(curl --fail --silent --show-error \
+            --retry 8 --retry-delay 3 --retry-all-errors \
+            "${WEB_URL}/demo")"
+          if [[ "$demo_html" != *"Run the trust network live."* ]]; then
+            echo "::error::Locked live demo did not render"
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            --retry 8 --retry-delay 3 --retry-all-errors \
+            "${WEB_URL}/health/demo" >/dev/null
+
   summary:
     name: Deployment summary
     if: always() && needs.preflight.result != 'skipped'
-    needs: [preflight, deploy-review, deploy-judge, deploy-web]
+    needs: [preflight, deploy-review, deploy-judge, deploy-web, smoke-demo]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
@@ -181,6 +220,7 @@ jobs:
           REVIEW_RESULT: ${{ needs.deploy-review.result }}
           JUDGE_RESULT: ${{ needs.deploy-judge.result }}
           WEB_RESULT: ${{ needs.deploy-web.result }}
+          SMOKE_RESULT: ${{ needs.smoke-demo.result }}
           WEB_URL: ${{ vars.WEB_URL }}
           REVIEW_URL: ${{ vars.REVIEW_URL }}
         run: |
@@ -190,11 +230,13 @@ jobs:
             echo "- Review: ${REVIEW_RESULT} — ${REVIEW_URL}"
             echo "- Judge: ${JUDGE_RESULT}"
             echo "- Dashboard: ${WEB_RESULT} — ${WEB_URL}"
+            echo "- Live demo smoke: ${SMOKE_RESULT}"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$PREFLIGHT_RESULT" != "success" ||
                 "$REVIEW_RESULT" != "success" ||
                 "$JUDGE_RESULT" != "success" ||
-                "$WEB_RESULT" != "success" ]]; then
+                "$WEB_RESULT" != "success" ||
+                "$SMOKE_RESULT" != "success" ]]; then
             exit 1
           fi

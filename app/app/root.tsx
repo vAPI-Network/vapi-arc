@@ -6,6 +6,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
 } from "react-router";
 
 import type { Route } from "./+types/root";
@@ -47,15 +48,12 @@ function Header() {
           <NavLink to="/" end className={navClass}>
             Feed
           </NavLink>
+          <NavLink to="/demo" className={navClass}>
+            Demo
+          </NavLink>
           <NavLink to="/review" className={navClass}>
             Review
           </NavLink>
-          <a
-            href="/api/reputation/0x0000000000000000000000000000000000000000"
-            className="nav-link"
-          >
-            API
-          </a>
         </nav>
       </div>
     </header>
@@ -75,14 +73,21 @@ function Footer() {
         >
           AgenticCommerce <span className="mono">0x0747…4583</span>
         </a>
+        <span aria-hidden="true">·</span>
+        <a href="/openapi.json">API</a>
       </div>
     </footer>
   );
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const presenterMode =
+    location.pathname === "/demo" &&
+    new URLSearchParams(location.search).get("present") === "1";
+
   return (
-    <html lang="en">
+    <html lang="en" className={presenterMode ? "presenter-mode" : undefined}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -91,9 +96,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        <Header />
-        <main className="shell main-content">{children}</main>
-        <Footer />
+        {!presenterMode && <Header />}
+        <main
+          className={
+            presenterMode
+              ? "shell main-content presenter-main"
+              : "shell main-content"
+          }
+        >
+          {children}
+        </main>
+        {!presenterMode && <Footer />}
         <ScrollRestoration />
         <Scripts />
       </body>
