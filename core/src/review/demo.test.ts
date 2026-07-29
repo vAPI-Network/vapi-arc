@@ -93,6 +93,7 @@ class FakeDemoChain implements DemoChainRail {
   humanReward = "200000";
   humanPayout = TX("b");
   blockFailures = 0;
+  readinessCalls = 0;
   createdRun?: DemoRun;
 
   async getBlockNumber(): Promise<bigint> {
@@ -200,6 +201,7 @@ class FakeDemoChain implements DemoChainRail {
   }
 
   async readiness(): Promise<DemoChainReadiness> {
+    this.readinessCalls += 1;
     return {
       chainId: 5_042_002,
       contractsReady: true,
@@ -273,6 +275,43 @@ class FakeDemoChain implements DemoChainRail {
 let databaseForFake: ReviewDatabase | undefined;
 
 describe("durable live demo orchestration", () => {
+  it("coalesces and caches the live readiness probe", async () => {
+    const database = new ReviewDatabase(":memory:");
+    const repository = new DemoRepository(database);
+    const chain = new FakeDemoChain();
+    database.upsertReviewer({
+      telegramUserId: "123",
+      telegramChatId: "123",
+      alias: "Auditor",
+      payoutAddress: REVIEWER,
+      skills: ["contracts"],
+    });
+    const processor = new DemoProcessor({
+      config: config(),
+      database,
+      repository,
+      chain,
+      circle: {
+        checkTreasuryBalance: async () => ({ balance: "3000000" }),
+      } as unknown as CircleRail,
+    });
+
+    try {
+      const [first, second] = await Promise.all([
+        processor.readiness(),
+        processor.readiness(),
+      ]);
+      const cached = await processor.readiness();
+
+      assert.equal(first.ready, true);
+      assert.equal(second.ready, true);
+      assert.equal(cached.ready, true);
+      assert.equal(chain.readinessCalls, 1);
+    } finally {
+      database.close();
+    }
+  });
+
   it("sets HumanOnly before submission and never purchases twice", async () => {
     const database = new ReviewDatabase(":memory:");
     databaseForFake = database;

@@ -2,7 +2,6 @@ import { GatewayClient } from "@circle-fin/x402-batching/client";
 import {
   createWalletClient,
   getAddress,
-  http,
   isAddressEqual,
   parseAbi,
   parseAbiItem,
@@ -12,7 +11,7 @@ import {
   type TransactionReceipt,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { arcTestnet, publicClient } from "../chain.js";
+import { arcTestnet, patientHttp, publicClient } from "../chain.js";
 import {
   agenticCommerceAbi,
   evaluationRouterAbi,
@@ -154,12 +153,12 @@ export class LiveDemoChainRail implements DemoChainRail {
     this.clientWallet = createWalletClient({
       account: clientAccount,
       chain: arcTestnet,
-      transport: http(rpcUrl, { retryCount: 6, retryDelay: 2_000 }),
+      transport: patientHttp(rpcUrl),
     });
     this.providerWallet = createWalletClient({
       account: providerAccount,
       chain: arcTestnet,
-      transport: http(rpcUrl, { retryCount: 6, retryDelay: 2_000 }),
+      transport: patientHttp(rpcUrl),
     });
   }
 
@@ -458,7 +457,10 @@ export class LiveDemoChainRail implements DemoChainRail {
       privateKey: this.config.demoClientPrivateKey!,
       rpcUrl: process.env.ARC_RPC_URL?.trim(),
     });
-    const balances = await gateway.getBalances();
+    // Read the Gateway rail directly. The wallet USDC balance was already read
+    // through the paced Arc transport above; getBalances() would repeat that
+    // RPC outside our limiter and can trip Arc's public per-request quota.
+    const gatewayBalance = await gateway.getBalance();
     return {
       chainId,
       contractsReady: Boolean(
@@ -475,8 +477,8 @@ export class LiveDemoChainRail implements DemoChainRail {
       clientTokenBalance: clientTokenBalance.toString(),
       clientNativeBalance: clientNativeBalance.toString(),
       providerNativeBalance: providerNativeBalance.toString(),
-      gatewayAvailable: balances.gateway.available.toString(),
-      gatewayTotal: balances.gateway.total.toString(),
+      gatewayAvailable: gatewayBalance.available.toString(),
+      gatewayTotal: gatewayBalance.total.toString(),
     };
   }
 

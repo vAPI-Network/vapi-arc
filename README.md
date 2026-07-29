@@ -121,7 +121,7 @@ services from the same source.
 
 - `contracts/` — EvaluationRouter v3 and 37 Foundry tests.
 - `core/` — AI judge, x402 review service, SQLite state machine, Telegram bot,
-  Circle wallet orchestration, evidence, reviewer CLI, and 91 service tests.
+  Circle wallet orchestration, evidence, reviewer CLI, and 94 service tests.
 - `app/` — live demo console, public proof pages, Arc feed, paid-review
   operations timeline, and reviewer history.
 - `adapters/arc/` — pinned Circle contract ABIs.
