@@ -1009,7 +1009,9 @@ export function FinalProofCard({
       <div className="demo-proof-facts">
         <div>
           <span>Decision</span>
-          <strong>{archived ? "Archived" : approved ? "Approve" : "Reject"}</strong>
+          <strong>
+            {archived ? "Archived" : approved ? "Approved" : "Rejected"}
+          </strong>
         </div>
         <div>
           <span>Auditor</span>
@@ -1025,12 +1027,10 @@ export function FinalProofCard({
           <span>Escrow outcome</span>
           <strong>
             {hasEvent(run, "escrow_funded")
-              ? `${formatUsdcAmount(run.budget)} USDC · ${
-                  archived
-                    ? "refunded to client"
-                    : approved
-                      ? "freelancer"
-                      : "client"
+              ? `${formatUsdcAmount(run.budget)} USDC ${
+                  approved && !archived
+                    ? "paid to freelancer"
+                    : "refunded to client"
                 }`
               : "Not funded"}
           </strong>

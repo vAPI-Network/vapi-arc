@@ -410,12 +410,10 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
 
       {(actionData?.error ||
         loaderData.serviceError ||
-        readinessError ||
         pollError) && (
         <div className="notice notice-error demo-page-notice" role="alert">
           {actionData?.error ||
             pollError ||
-            readinessError ||
             loaderData.serviceError}
         </div>
       )}

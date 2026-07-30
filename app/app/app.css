@@ -2663,8 +2663,9 @@ h2 {
   --muted: #68707c;
   --line: #dfe3e8;
   --line-strong: #c8ced6;
-  --accent: #df5b20;
-  --accent-hover: #c94c15;
+  --accent: #c94c15;
+  --accent-hover: #aa3d0e;
+  --accent-contrast: #ffffff;
   --accent-soft: #fff5ef;
   --success: #157347;
   --warning: #9a6700;
@@ -2687,6 +2688,7 @@ h2 {
     --line-strong: #464d56;
     --accent: #f1783f;
     --accent-hover: #fb8b57;
+    --accent-contrast: #17191c;
     --accent-soft: #2c1d17;
     --success: #6fcf97;
     --warning: #e6b450;
@@ -2932,7 +2934,7 @@ h2,
 
 .demo-button-primary {
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
   background: var(--accent);
   box-shadow: none;
 }
@@ -3027,6 +3029,17 @@ h2,
 
 .demo-readiness {
   margin-bottom: 20px;
+}
+
+.demo-readiness[role="status"] {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+}
+
+.demo-readiness[role="status"] > span {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .demo-readiness > summary {
@@ -3225,7 +3238,7 @@ h2,
 
 .demo-step-copy small,
 .demo-step-receipt {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .demo-console-action {
@@ -3309,6 +3322,16 @@ h2,
 
 .demo-payment-facts li {
   padding: 6px 0;
+}
+
+.demo-payment-facts span,
+.demo-proof-facts span {
+  font-size: 11px;
+}
+
+.demo-payment-facts strong,
+.demo-proof-facts strong {
+  font-size: 12px;
 }
 
 .demo-waiting {
@@ -3612,6 +3635,24 @@ h2,
 
 .presenter-main .demo-readiness {
   backdrop-filter: none;
+}
+
+.presenter-main .demo-step-copy small,
+.presenter-main .demo-step-receipt,
+.presenter-main .demo-stage-header p {
+  font-size: 12px;
+}
+
+.presenter-main .demo-step-copy strong,
+.presenter-main .demo-payment-facts strong,
+.presenter-main .demo-proof-facts strong {
+  font-size: 13px;
+}
+
+.presenter-main .demo-payment-facts span,
+.presenter-main .demo-proof-facts span,
+.presenter-main .data-label {
+  font-size: 12px;
 }
 
 .presenter-controls {
