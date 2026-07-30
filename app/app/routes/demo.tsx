@@ -56,11 +56,11 @@ type ActionResponse = {
 };
 
 export const meta: Route.MetaFunction = () => [
-  { title: "Live Trust Demo · vAPI Trust Network" },
+  { title: "Human Review Demo · vAPI Trust Network" },
   {
     name: "description",
     content:
-      "Watch an agent escrow USDC, purchase human judgment, pay an auditor, and settle with public proof on Arc.",
+      "Create an Arc Testnet escrow, purchase a human review, and inspect the payout and settlement transactions.",
   },
 ];
 
@@ -207,7 +207,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (!readiness.ok) return actionError(readiness.message, 502);
     if (!readiness.data.ready) {
       return actionError(
-        "The live rails are not ready. Open the readiness checks for details.",
+        "Some required services are unavailable. Open the system checks for details.",
         409,
       );
     }
@@ -334,14 +334,9 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
     return (
       <div className="demo-locked-layout">
         <section className="demo-unlock-card" aria-labelledby="unlock-title">
-          <div className="demo-lock-orbit" aria-hidden="true">
-            <span>v</span>
-          </div>
-          <p className="eyebrow">Presenter access</p>
-          <h1 id="unlock-title">Run the trust network live.</h1>
+          <h1 id="unlock-title">vAPI Trust Network demo</h1>
           <p>
-            Two browser clicks launch real Arc transactions. Enter the show-day
-            passcode to protect the funded demo wallets.
+            Enter the presenter passcode to use the funded Arc Testnet wallets.
           </p>
           {actionData?.error && (
             <div className="notice notice-error" role="alert">
@@ -365,8 +360,7 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
                 className="demo-button demo-button-primary"
                 disabled={!loaderData.configured}
               >
-                Unlock live demo
-                <span aria-hidden="true">→</span>
+                Unlock demo
               </button>
             </div>
           </Form>
@@ -376,11 +370,10 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
               <span className="mono">DEMO_SESSION_SECRET</span> on vapi-web.
             </p>
           )}
-          <div className="demo-security-note">
-            <span aria-hidden="true">⌁</span>
-            Private keys never enter this browser. Commands are signed by the
-            isolated Railway review service.
-          </div>
+          <p className="demo-security-note">
+            Transactions are signed by the review service. Private keys are not
+            sent to the browser.
+          </p>
         </section>
         <LockedDemoPreview run={loaderData.publicLatest} />
       </div>
@@ -392,21 +385,16 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
       {isPresenter && <PresenterControls />}
       <header className="demo-hero">
         <div>
-          <p className="eyebrow">Live Arc execution</p>
-          <h1>
-            Agent work, human judgment,
-            <br />
-            <span>public proof.</span>
-          </h1>
+          <h1>Human review demo</h1>
           <p className="lede">
-            Watch an agent escrow USDC, purchase an independent review, pay the
-            auditor, and settle the freelancer—all without leaving this page.
+            Create an escrow, purchase a human review, and follow the auditor
+            payout and escrow settlement on Arc Testnet.
           </p>
         </div>
         <div className="demo-hero-actions">
           {!isPresenter && (
             <Link to="/demo?present=1" className="demo-present-link">
-              Presenter mode <span aria-hidden="true">↗</span>
+              Present
             </Link>
           )}
           <Form method="post">
@@ -422,12 +410,10 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
 
       {(actionData?.error ||
         loaderData.serviceError ||
-        readinessError ||
         pollError) && (
         <div className="notice notice-error demo-page-notice" role="alert">
           {actionData?.error ||
             pollError ||
-            readinessError ||
             loaderData.serviceError}
         </div>
       )}
@@ -438,19 +424,12 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
             <DemoTimeline run={run} />
           ) : (
             <section className="demo-timeline-card demo-timeline-empty">
-              <div className="demo-empty-orbit" aria-hidden="true">
-                <span />
-              </div>
-              <p className="eyebrow">Trust path</p>
-              <h2>Ready for a new live run</h2>
-              <p>
-                Create the escrow to reveal every verified step from agent
-                payment to public evidence.
-              </p>
+              <h2>No active run</h2>
+              <p>Create and fund an escrow to start.</p>
               <div className="demo-empty-stages" aria-hidden="true">
                 <span>Escrow</span>
-                <span>Purchase</span>
-                <span>Judgment</span>
+                <span>Review payment</span>
+                <span>Auditor review</span>
                 <span>Settlement</span>
               </div>
             </section>

@@ -12,21 +12,10 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 
-export const links: Route.LinksFunction = () => [
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
-    crossOrigin: "anonymous",
-  },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap",
-  },
-];
+export const links: Route.LinksFunction = () => [];
 
 export const meta: Route.MetaFunction = () => [
-  { title: "vAPI Trust Network · Auditable ERC-8183 evaluation" },
+  { title: "vAPI Trust Network · Arc Testnet" },
   {
     name: "description",
     content:
@@ -46,13 +35,13 @@ function Header() {
         </NavLink>
         <nav aria-label="Primary navigation" className="primary-nav">
           <NavLink to="/" end className={navClass}>
-            Feed
+            Jobs
           </NavLink>
           <NavLink to="/demo" className={navClass}>
             Demo
           </NavLink>
           <NavLink to="/review" className={navClass}>
-            Review
+            Reviews
           </NavLink>
         </nav>
       </div>
@@ -74,7 +63,7 @@ function Footer() {
           AgenticCommerce <span className="mono">0x0747…4583</span>
         </a>
         <span aria-hidden="true">·</span>
-        <a href="/openapi.json">API</a>
+        <a href="/openapi.json">OpenAPI</a>
       </div>
     </footer>
   );
@@ -137,7 +126,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       <h1 id="error-title">{title}</h1>
       <p>{detail}</p>
       <NavLink to="/" className="button">
-        Back to feed
+        Back to jobs
       </NavLink>
     </section>
   );

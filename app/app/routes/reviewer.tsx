@@ -25,20 +25,18 @@ export default function Reviewer({ loaderData }: Route.ComponentProps) {
       <>
         <div className="page-heading">
           <div>
-            <p className="eyebrow">Auditor history</p>
-            <h1>Reviewer unavailable</h1>
+            <h1>Auditor unavailable</h1>
             <p className="lede">{loaderData.message}</p>
           </div>
           <NetworkPill />
         </div>
         <div className="empty-state">
-          <h2>No reviewer record to display</h2>
+          <h2>No auditor record</h2>
           <p>
-            Reviewer profiles are served by the paid human review exchange and
-            will return once that service is available.
+            Auditor data will appear when the review service is available.
           </p>
           <Link to="/review" className="button empty-state-action">
-            Back to review operations
+            Back to reviews
           </Link>
         </div>
       </>
@@ -51,7 +49,6 @@ export default function Reviewer({ loaderData }: Route.ComponentProps) {
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Auditor history</p>
           <h1>{reviewer.alias}</h1>
           <div className="address-line">
             <ShortHash value={reviewer.address} start={12} end={8} />
@@ -60,11 +57,11 @@ export default function Reviewer({ loaderData }: Route.ComponentProps) {
                 reviewer.active ? "reviewer-active" : ""
               }`}
             >
-              {reviewer.active ? "Accepting reviews" : "Council member inactive"}
+              {reviewer.active ? "Accepting reviews" : "Not accepting reviews"}
             </span>
           </div>
           {reviewer.skills.length > 0 && (
-            <div className="skill-list" aria-label="Reviewer skills">
+            <div className="skill-list" aria-label="Auditor skills">
               {reviewer.skills.map((skill) => (
                 <span className="skill-tag" key={skill}>
                   {skill}
@@ -79,15 +76,15 @@ export default function Reviewer({ loaderData }: Route.ComponentProps) {
       <section className="stats-grid reviewer-stats" aria-label="Auditor statistics">
         <div className="stat">
           <span className="stat-value">{reviewer.completedReviews}</span>
-          <span className="stat-label">Verdicts completed</span>
+          <span className="stat-label">Completed reviews</span>
         </div>
         <div className="stat">
           <span className="stat-value">{reviewer.paidReviews}</span>
-          <span className="stat-label">Auditor payouts</span>
+          <span className="stat-label">Paid reviews</span>
         </div>
         <div className="stat">
           <span className="stat-value">{reviewer.onChainSettledReviews}</span>
-          <span className="stat-label">On-chain settled</span>
+          <span className="stat-label">Settled on Arc</span>
         </div>
         <div className="stat">
           <span className="stat-value">{reviewer.approvals}</span>
@@ -114,18 +111,13 @@ export default function Reviewer({ loaderData }: Route.ComponentProps) {
       <section aria-labelledby="reviews-heading">
         <div className="section-bar">
           <h2 id="reviews-heading">Review history</h2>
-          <p>
-            Objective receipts only · no unverified accuracy score
-          </p>
+          <p>Completed reviews and transaction receipts</p>
         </div>
 
         {reviewer.reviews.length === 0 ? (
           <div className="empty-state">
             <h2>No completed reviews</h2>
-            <p>
-              Paid reviews claimed by this auditor will appear here with their
-              verdict and Arc receipts.
-            </p>
+            <p>This auditor has not completed a review.</p>
           </div>
         ) : (
           <div className="table-wrap">
@@ -160,12 +152,12 @@ export default function Reviewer({ loaderData }: Route.ComponentProps) {
                       <div className="tx-links">
                         {order.payoutTransactionHash && (
                           <TxLink hash={order.payoutTransactionHash}>
-                            payout ↗
+                            Payout ↗
                           </TxLink>
                         )}
                         {order.resolutionTransactionHash && (
                           <TxLink hash={order.resolutionTransactionHash}>
-                            verdict ↗
+                            Verdict ↗
                           </TxLink>
                         )}
                         {!order.payoutTransactionHash &&

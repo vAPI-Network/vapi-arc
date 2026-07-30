@@ -22,11 +22,11 @@ const EVENT_LABELS: Record<string, string> = {
   escrow_allowance_ready: "USDC allowance ready",
   deliverable_committed: "Deliverable committed",
   judge_escalation_confirmed: "vAPI escalation confirmed",
-  human_judgment_required: "Human judgment required",
+  human_judgment_required: "Human review required",
   review_order_attached: "Human review order attached",
-  demo_run_finalized: "Public proof finalized",
+  demo_run_finalized: "Run finalized",
   demo_step_failed: "Run needs attention",
-  demo_transient_check_failed: "Still checking a live rail",
+  demo_transient_check_failed: "Service check pending",
   run_created: "Demo run created",
   job_created: "Freelance job created",
   lane_set: "HumanOnly lane selected",
@@ -34,18 +34,18 @@ const EVENT_LABELS: Record<string, string> = {
   allowance_approved: "USDC allowance approved",
   escrow_funded: "Escrow funded",
   deliverable_submitted: "Deliverable committed",
-  job_escalated: "vAPI requested human judgment",
+  job_escalated: "Job sent for human review",
   x402_challenge_received: "HTTP 402 challenge received",
   x402_authorization_signed: "Gateway authorization signed",
   x402_payment_accepted: "x402 payment accepted",
   review_order_created: "Human review order created",
   review_dispatched: "Telegram offer dispatched",
   review_claimed: "Auditor claimed review",
-  verdict_submitted: "Reasoned verdict submitted",
+  verdict_submitted: "Verdict submitted",
   reviewer_paid: "Auditor payout confirmed",
   escrow_settled: "Escrow settled on Arc",
   evidence_verified: "Evidence hash verified",
-  retry_scheduled: "Safe retry scheduled",
+  retry_scheduled: "Retry scheduled",
   run_failed: "Run needs attention",
   refund_started: "Escrow refund queued",
   escrow_refunded: "Escrow returned to client",
@@ -171,7 +171,7 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
       key: "escrow",
       number: "01",
       title: "Escrow",
-      description: "A real $1 freelance job is committed on Arc.",
+      description: "$1.00 USDC is locked in the job escrow.",
       steps: [
         {
           label: "Job created",
@@ -204,11 +204,11 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
     {
       key: "purchase",
       number: "02",
-      title: "Agent purchase",
-      description: "The hiring agent buys independent judgment via x402.",
+      title: "Review payment",
+      description: "The client agent pays for a human review through x402.",
       steps: [
         {
-          label: "Human judgment required",
+          label: "Human review required",
           detail: "vAPI evaluator escalated the job",
           complete: hasEvent(
             run,
@@ -219,13 +219,13 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
         },
         {
           label: "HTTP 402 received",
-          detail: `${formatUsdcAmount(run.reviewPrice)} USDC price discovered`,
+          detail: `${formatUsdcAmount(run.reviewPrice)} USDC review price`,
           complete: challengeReceived || hasPayment,
           receipt: null,
         },
         {
           label: "Gateway authorized",
-          detail: "Agent signed a gasless payment",
+          detail: "Payment authorization signed",
           complete: authorizationSigned || hasPayment,
           receipt: null,
         },
@@ -240,12 +240,12 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
     {
       key: "judgment",
       number: "03",
-      title: "Human judgment",
-      description: "An allowlisted auditor claims and reasons in Telegram.",
+      title: "Auditor review",
+      description: "An auditor claims the review and submits a verdict in Telegram.",
       steps: [
         {
           label: "Telegram dispatched",
-          detail: "Review Council notified",
+          detail: "Auditors notified",
           complete: reviewAtLeast(run, "dispatched"),
           receipt: null,
         },
@@ -259,7 +259,7 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
           label: "Verdict submitted",
           detail: run.reviewOrder?.decision
             ? `${run.reviewOrder.decision === "approve" ? "Approved" : "Rejected"} with a written reason`
-            : "Independent decision pending",
+            : "Waiting for verdict",
           complete: reviewAtLeast(run, "verdict_submitted"),
           receipt: null,
         },
@@ -269,7 +269,7 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
       key: "settlement",
       number: "04",
       title: "Settlement",
-      description: "The auditor is paid, then the escrow follows the verdict.",
+      description: "The auditor is paid before the escrow settles or refunds.",
       steps: [
         {
           label: "Auditor paid",
@@ -307,7 +307,7 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
             run.reviewOrder?.evidenceVerified === true &&
             run.onChainVerified
               ? "Canonical HumanEvidenceV1"
-              : "Waiting for final proof",
+              : "Waiting for evidence",
           complete:
             run.reviewOrder?.evidenceVerified === true &&
             run.onChainVerified,
@@ -320,10 +320,7 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
   return (
     <section className="demo-timeline-card" aria-labelledby="trust-path-title">
       <div className="demo-card-heading">
-        <div>
-          <p className="eyebrow">Live trust path</p>
-          <h2 id="trust-path-title">Every step earns its checkmark</h2>
-        </div>
+        <h2 id="trust-path-title">Run progress</h2>
         <span className={`demo-run-state demo-run-state-${run.state}`}>
           <span aria-hidden="true" />
           {DEMO_STATE_LABELS[run.state]}
@@ -389,10 +386,10 @@ export function ReadinessPanel({
         className={`demo-readiness ${error ? "demo-readiness-error" : ""}`}
         role="status"
       >
-        <strong>{error ? "Readiness unavailable" : "Checking live rails…"}</strong>
+        <strong>{error ? "Service status unavailable" : "Checking services…"}</strong>
         <span>
           {error ??
-            "The console is ready while Arc, Gateway, Telegram, and Circle are checked in the background."}
+            "Checking Arc, Gateway, Telegram, and Circle."}
         </span>
       </aside>
     );
@@ -408,16 +405,16 @@ export function ReadinessPanel({
           <span>
             <strong>
               {readiness.ready
-                ? "All systems ready"
-                : "Demo needs attention"}
+                ? "Ready"
+                : "Setup required"}
             </strong>
             <small>
-              {readiness.checks.filter((check) => check.status === "ready").length}
-              /{readiness.checks.length} live checks passing
+              {readiness.checks.filter((check) => check.status === "ready").length}{" "}
+              of {readiness.checks.length} checks passed
             </small>
           </span>
         </span>
-        <span className="readiness-expand">View checks</span>
+        <span className="readiness-expand">Show checks</span>
       </summary>
       <div className="readiness-checks">
         {readiness.checks.map((check) => (
@@ -434,7 +431,7 @@ export function ReadinessPanel({
         ))}
         <div className="readiness-live-values" aria-label="Demo rail details">
           <div>
-            <span className="data-label">Funded balances</span>
+            <span className="data-label">Balances</span>
             <dl>
               <div>
                 <dt>Escrow wallet</dt>
@@ -463,7 +460,7 @@ export function ReadinessPanel({
             </dl>
           </div>
           <div>
-            <span className="data-label">Isolated actors</span>
+            <span className="data-label">Wallets</span>
             <dl>
               {(
                 [
@@ -505,7 +502,7 @@ function SubmitButton({
       {navigation.state !== "idle" ? (
         <>
           <span className="demo-spinner" aria-hidden="true" />
-          Working on Arc…
+          Processing…
         </>
       ) : (
         children
@@ -526,15 +523,10 @@ export function DemoActionPanel({
   if (!run) {
     return (
       <aside className="demo-action-card demo-action-card-start">
-        <span className="demo-action-index">01 / 02</span>
-        <div className="demo-action-symbol" aria-hidden="true">
-          ◇
-        </div>
-        <p className="eyebrow">Start the proof</p>
-        <h2>Create & fund a $1 escrow</h2>
+        <span className="demo-action-index">Step 1 of 2</span>
+        <h2>Create and fund escrow</h2>
         <p>
-          A demo client hires a freelancer, locks real testnet USDC, and commits
-          the fixed deliverable to Arc.
+          Lock $1.00 USDC in an Arc Testnet job with the demo deliverable.
         </p>
         <Form method="post">
           <input type="hidden" name="intent" value="create" />
@@ -563,15 +555,11 @@ export function DemoActionPanel({
   if (run.capabilities.canPurchase) {
     return (
       <aside className="demo-action-card demo-action-card-purchase">
-        <span className="demo-action-index">02 / 02</span>
-        <div className="demo-action-symbol demo-action-symbol-live" aria-hidden="true">
-          402
-        </div>
-        <p className="eyebrow">Human judgment required</p>
-        <h2>Agent purchases review</h2>
+        <span className="demo-action-index">Step 2 of 2</span>
+        <h2>Purchase human review</h2>
         <p>
-          vAPI declined to auto-settle this HumanOnly job. The agent can now
-          purchase an independent auditor through Circle Gateway.
+          Pay {formatUsdcAmount(run.reviewPrice)} USDC through x402 to send the
+          job to an auditor.
         </p>
         <Form method="post">
           <input type="hidden" name="intent" value="purchase" />
@@ -606,37 +594,25 @@ export function DemoActionPanel({
     const refundRecovery = run.reviewOrder?.state === "expired";
     return (
       <aside className="demo-action-card demo-action-card-error">
-        <span className="demo-action-index">Safe recovery</span>
-        <div className="demo-action-symbol" aria-hidden="true">
-          !
-        </div>
-        <p className="eyebrow">
-          {settlementRecovery
-            ? "Auditor paid · settlement paused"
-            : payoutRecovery
-              ? "Verdict saved · payout paused"
-              : refundRecovery
-                ? "Review expired · x402 refund paused"
-                : "Action required"}
-        </p>
+        <span className="demo-action-index">Retry</span>
         <h2>
           {settlementRecovery
-            ? "Retry escrow settlement only"
+            ? "Settlement failed"
             : payoutRecovery
-              ? "Retry auditor payout only"
+              ? "Payout failed"
               : refundRecovery
-                ? "Retry payer refund only"
-                : "The run paused safely"}
+                ? "Refund failed"
+                : "Run failed"}
         </h2>
         <p>
           {settlementRecovery
-            ? "The $0.20 auditor reward is already confirmed. This retry can only execute humanResolve; it cannot pay the auditor twice."
+            ? "The auditor payout is complete. Retry only submits the escrow verdict."
             : payoutRecovery
-              ? "The human verdict is durable, but Circle has not confirmed the reward. Escrow settlement stays blocked until payout succeeds."
+              ? "The verdict is saved, but Circle has not confirmed the auditor payment."
               : refundRecovery
-                ? "No auditor completed the review. This retry rotates only the exhausted Circle refund request; it cannot charge the agent again."
+                ? "The review expired before a verdict. Retry only submits the payer refund."
               : run.lastError ||
-                "A live dependency did not confirm. Persisted receipts prevent completed payments or writes from repeating."}
+                "The current operation did not complete. Finished transactions will not be repeated."}
         </p>
         <div className="demo-action-row">
           <Form method="post">
@@ -648,7 +624,7 @@ export function DemoActionPanel({
             <Form method="post">
               <input type="hidden" name="intent" value="archive" />
               <input type="hidden" name="runId" value={run.id} />
-              <SubmitButton tone="quiet">Archive & refund later</SubmitButton>
+              <SubmitButton tone="quiet">Archive run</SubmitButton>
             </Form>
           )}
         </div>
@@ -662,26 +638,16 @@ export function DemoActionPanel({
       run.reviewOrder?.state === "refunded";
     return (
       <aside className="demo-action-card demo-action-card-telegram">
-        <span className="demo-action-index">Phone handoff</span>
-        <div className="demo-phone" aria-hidden="true">
-          <span className="demo-phone-speaker" />
-          <span className="demo-phone-buzz">1</span>
-          <strong>vAPI Trust Council</strong>
-          <small>New paid review available</small>
-          <span className="demo-phone-claim">Claim review</span>
-        </div>
-        <p className="eyebrow">
-          {refunding ? "Review SLA expired" : "Check Telegram"}
-        </p>
+        <span className="demo-action-index">Telegram review</span>
         <h2>
           {refunding
-            ? "Returning the x402 payment"
-            : "A human is now in the loop"}
+            ? "Refunding review payment"
+            : "Review sent to Telegram"}
         </h2>
         <p>
           {refunding
-            ? "No valid verdict arrived within the review SLA. The payer refund is being reconciled without touching the escrow."
-            : "Claim the review, choose approve or reject, then reply with a concise reason. The auditor is paid for either valid decision."}
+            ? "No verdict arrived before the deadline. The x402 payment is being refunded."
+            : "Claim the review, choose Approve or Reject, and reply with a reason. The auditor is paid for either verdict."}
         </p>
         {!refunding && (
           <div className="demo-telegram-entry">
@@ -691,7 +657,7 @@ export function DemoActionPanel({
               rel="noreferrer"
               className="demo-button demo-button-primary"
             >
-              Open Trust Council bot
+              Open Telegram bot
               <span aria-hidden="true">↗</span>
             </a>
             <a
@@ -738,22 +704,18 @@ export function DemoActionPanel({
 
   return (
     <aside className="demo-action-card demo-action-card-working">
-      <span className="demo-action-index">Live execution</span>
-      <div className="demo-orbit" aria-hidden="true">
-        <span />
-      </div>
-      <p className="eyebrow">Arc is confirming</p>
-      <h2>{DEMO_STATE_LABELS[run.state]}</h2>
+      <span className="demo-action-index">Current step</span>
+      <h2>Waiting for Arc confirmation</h2>
       <p>
         {run.currentOperation
           ? run.currentOperation.replaceAll("_", " ")
-          : "The durable worker is reconciling the next real transaction."}
-        . You can reload this page without interrupting the run.
+          : DEMO_STATE_LABELS[run.state]}
+        . You can reload the page without interrupting the run.
       </p>
       <div className="demo-waiting">
         <span className="demo-pulse" aria-hidden="true" />
         <span>
-          <strong>Still checking Arc</strong>
+          <strong>Status updates automatically</strong>
           <small>
             {run.lastError
               ? `Last check: ${run.lastError}`
@@ -783,7 +745,7 @@ export function ScenarioDetails({
       <summary>
         <span>
           <strong>API contract compliance review</strong>
-          <small>Fixed HumanOnly scenario · human-review-v1</small>
+          <small>Scenario: human-review-v1 · HumanOnly</small>
         </span>
         <span>Job details</span>
       </summary>
@@ -849,13 +811,15 @@ export function DemoEventLog({ run }: { run: DemoRun }) {
     <details className="demo-event-panel">
       <summary>
         <span>
-          <strong>Technical event log</strong>
-          <small>{events.length} durable events</small>
+          <strong>Event log</strong>
+          <small>
+            {events.length} event{events.length === 1 ? "" : "s"}
+          </small>
         </span>
-        <span>Inspect</span>
+        <span>Show</span>
       </summary>
       {events.length === 0 ? (
-        <p className="muted">The first durable event is still being recorded.</p>
+        <p className="muted">No events recorded yet.</p>
       ) : (
         <ol>
           {events.map((event) => {
@@ -986,8 +950,8 @@ export function DemoReceipts({ run }: { run: DemoRun }) {
   return (
     <section className="demo-receipts" aria-labelledby="receipts-title">
       <div className="section-bar">
-        <h2 id="receipts-title">Live receipts</h2>
-        <p>Real references · Arc Testnet</p>
+        <h2 id="receipts-title">Transactions</h2>
+        <p>Arc Testnet</p>
       </div>
       <div className="demo-receipt-grid">
         {available.map(([label, value]) => (
@@ -1026,38 +990,32 @@ export function FinalProofCard({
 
   return (
     <aside className="demo-proof-card">
-      <div
-        className={`demo-proof-seal ${approved || archived ? "demo-proof-approved" : "demo-proof-rejected"}`}
-        aria-hidden="true"
-      >
-        {approved || archived ? "✓" : "×"}
-      </div>
-      <p className="eyebrow">Public proof complete</p>
+      <p className="demo-action-index">Run complete</p>
       <h2>
         {archived
-          ? "Escrow returned safely"
+          ? "Escrow refunded"
           : approved
             ? "Freelancer paid"
             : "Client refunded"}
       </h2>
       <p className="demo-proof-reason">
-        “
         {archived
           ? order
-            ? "The paid review could not complete; its x402 payment and original escrow were recovered safely."
-            : "The run was archived before human review and any funded escrow was recovered safely."
+            ? "The review did not complete. The x402 payment and escrow were refunded."
+            : "The run was archived before human review. The escrow was refunded."
           : order?.reasoning ||
-            "The auditor’s reason is recorded in the evidence."}
-        ”
+            "The auditor reason is recorded in the evidence."}
       </p>
       <div className="demo-proof-facts">
         <div>
           <span>Decision</span>
-          <strong>{archived ? "Archived" : approved ? "Approve" : "Reject"}</strong>
+          <strong>
+            {archived ? "Archived" : approved ? "Approved" : "Rejected"}
+          </strong>
         </div>
         <div>
           <span>Auditor</span>
-          <strong>{order?.reviewer?.alias || "Trust Council"}</strong>
+          <strong>{order?.reviewer?.alias || "Not assigned"}</strong>
         </div>
         <div>
           <span>Auditor payout</span>
@@ -1069,12 +1027,10 @@ export function FinalProofCard({
           <span>Escrow outcome</span>
           <strong>
             {hasEvent(run, "escrow_funded")
-              ? `${formatUsdcAmount(run.budget)} USDC · ${
-                  archived
-                    ? "client · recovered"
-                    : approved
-                      ? "freelancer"
-                      : "client"
+              ? `${formatUsdcAmount(run.budget)} USDC ${
+                  approved && !archived
+                    ? "paid to freelancer"
+                    : "refunded to client"
                 }`
               : "Not funded"}
           </strong>
@@ -1164,7 +1120,7 @@ export function FinalProofCard({
           onClick={copyProof}
           className="demo-button demo-button-primary"
         >
-          {copied ? "Proof link copied" : "Copy public proof link"}
+          {copied ? "Proof link copied" : "Copy proof link"}
         </button>
         {includeActions && (
           <Link to="/demo" className="demo-button demo-button-secondary">
@@ -1178,10 +1134,10 @@ export function FinalProofCard({
             className="subtle-link demo-reviewer-history"
             to={`/reviewer/${order.reviewer.address}`}
           >
-            View {order.reviewer.alias}’s factual review history →
+            View review history →
           </Link>
           <Link className="subtle-link" to="/review">
-            Open full review operations →
+            View all reviews →
           </Link>
         </div>
       )}
@@ -1192,7 +1148,7 @@ export function FinalProofCard({
 export function LockedDemoPreview({ run }: { run: DemoRun | null }) {
   const previewOutcome = run
     ? run.state === "archived_refunded"
-      ? "recovered"
+      ? "refunded"
       : run.reviewOrder?.decision === "approve"
         ? "approved"
         : run.reviewOrder?.decision === "reject"
@@ -1202,21 +1158,14 @@ export function LockedDemoPreview({ run }: { run: DemoRun | null }) {
   return (
     <section className="demo-locked-preview" aria-labelledby="latest-proof">
       <div>
-        <p className="eyebrow">Public evidence</p>
-        <h2 id="latest-proof">Latest completed trust run</h2>
+        <h2 id="latest-proof">Latest completed run</h2>
         <p>
-          The controls are private. The outcome, auditor payout, and Arc
-          receipts remain public.
+          Sign in to start a run. Anyone with a proof link can view completed
+          runs.
         </p>
       </div>
       {run ? (
         <div className="demo-preview-result">
-          <span
-            className={`demo-preview-icon ${previewOutcome === "rejected" ? "demo-preview-rejected" : "demo-preview-approved"}`}
-            aria-hidden="true"
-          >
-            {previewOutcome === "rejected" ? "×" : "✓"}
-          </span>
           <span>
             <strong>
               Job #{run.jobId || "—"} ·{" "}
@@ -1229,7 +1178,7 @@ export function LockedDemoPreview({ run }: { run: DemoRun | null }) {
           </Link>
         </div>
       ) : (
-        <p className="muted">No completed UI demo has been published yet.</p>
+        <p className="muted">No completed runs.</p>
       )}
     </section>
   );
@@ -1255,7 +1204,7 @@ export function PresenterControls() {
   return (
     <div className="presenter-controls">
       <Link to="/demo" className="presenter-control">
-        Exit presenter mode
+        Exit presentation
       </Link>
       <button
         type="button"
