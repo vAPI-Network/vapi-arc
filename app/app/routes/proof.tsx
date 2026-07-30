@@ -16,13 +16,13 @@ const RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i;
 export const meta: Route.MetaFunction = ({ data }) => [
   {
     title: data?.run
-      ? `Trust Proof · Job #${data.run.jobId || "—"} · vAPI`
-      : "Trust Proof · vAPI",
+      ? `Review proof · Job #${data.run.jobId || "—"} · vAPI`
+      : "Review proof · vAPI",
   },
   {
     name: "description",
     content:
-      "Public evidence for an agent-funded human review and ERC-8183 escrow settlement on Arc.",
+      "Payment, verdict, auditor payout, and escrow transactions on Arc Testnet.",
   },
 ];
 
@@ -50,15 +50,10 @@ export default function Proof({ loaderData }: Route.ComponentProps) {
     <div className="proof-page">
       <header className="proof-hero">
         <div>
-          <p className="eyebrow">Public trust receipt</p>
-          <h1>
-            One decision.
-            <br />
-            <span>Every receipt.</span>
-          </h1>
+          <h1>Human review proof</h1>
           <p className="lede">
-            A sanitized, read-only record of agent payment, human judgment,
-            auditor compensation, and escrow settlement on Arc Testnet.
+            A read-only record of the review payment, verdict, auditor payout,
+            and escrow settlement on Arc Testnet.
           </p>
         </div>
         <div className="proof-network">
@@ -78,7 +73,7 @@ export default function Proof({ loaderData }: Route.ComponentProps) {
 
       <div className="proof-footer-action">
         <Link to="/review" className="demo-button demo-button-secondary">
-          Explore all human reviews
+          View all reviews
         </Link>
       </div>
     </div>

@@ -13,7 +13,7 @@ test("Feed and Review render from the durable snapshot without an Arc scan", asy
   const feedStart = Date.now();
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Evaluation with receipts" }),
+    page.getByRole("heading", { name: "Job evaluations" }),
   ).toBeVisible();
   await expect(page.getByText("#160000", { exact: true })).toBeVisible();
   expect(Date.now() - feedStart).toBeLessThan(2_500);
@@ -53,6 +53,6 @@ test("stale reputation is explicitly disclosed", async ({ page, request }) => {
 
   await page.goto(`/provider/${provider}`);
   await expect(
-    page.getByText("Showing the last verified reputation snapshot"),
+    page.getByText("Showing saved provider data"),
   ).toBeVisible();
 });

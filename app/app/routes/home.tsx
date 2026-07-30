@@ -42,11 +42,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Verdict feed</p>
-          <h1>Evaluation with receipts</h1>
+          <h1>Job evaluations</h1>
           <p className="lede">
-            Live ERC-8183 job outcomes with public on-chain evidence.
-            AI settles narrow work; uncertainty routes to a human.
+            ERC-8183 job outcomes and transaction receipts from Arc Testnet.
+            Jobs settle automatically or go to human review.
           </p>
         </div>
         <NetworkPill />
@@ -60,15 +59,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <div>
             <strong>
               {indexWarming
-                ? "Arc evidence index is warming up"
+                ? "Indexing Arc transactions"
                 : snapshotHasData
-                  ? "Showing the last verified Arc snapshot"
-                  : "Arc evidence index is unavailable"}
+                  ? "Showing saved Arc data"
+                  : "Arc index unavailable"}
             </strong>
             <p>
               {indexWarming
-                ? "The page is ready now; verified jobs will appear when the background indexer completes its first pass."
-                : `${snapshotProblem} Navigation remains available while the background indexer retries.`}
+                ? "Jobs will appear when the first index completes."
+                : `${snapshotProblem} The indexer will retry automatically.`}
             </p>
           </div>
         </aside>
@@ -76,11 +75,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
       <section aria-labelledby="jobs-heading">
         <div className="section-bar">
-          <h2 id="jobs-heading">Job board</h2>
+          <h2 id="jobs-heading">Jobs</h2>
           <p>
             {snapshot?.latestBlock
               ? `Verified through Arc block ${snapshot.latestBlock}`
-              : "Durable Arc evidence snapshot"}
+              : "No indexed block yet"}
           </p>
         </div>
 
@@ -88,15 +87,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <div className="empty-state">
             <h2>
               {indexWarming
-                ? "Indexing Arc receipts"
+                ? "Indexing Arc transactions"
                 : serviceError || !snapshotHasData
-                  ? "Feed temporarily unavailable"
+                  ? "Jobs temporarily unavailable"
                   : "No evaluated jobs yet"}
             </h2>
             <p>
               {indexWarming
-                ? "This first pass runs in the review worker and never blocks page navigation."
-                : "Submitted jobs assigned to the EvaluationRouter will appear here with their final verdict provenance."}
+                ? "Jobs will appear when the first index completes."
+                : "Submitted jobs assigned to the EvaluationRouter will appear here after evaluation."}
             </p>
           </div>
         ) : (
@@ -108,7 +107,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   <th>Status</th>
                   <th>Budget</th>
                   <th>Provider</th>
-                  <th>Verdict provenance</th>
+                  <th>Decision source</th>
                   <th>Arcscan</th>
                 </tr>
               </thead>
@@ -128,31 +127,35 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                           className="subtle-link"
                           aria-label={`View evaluation history for ${job.provider}`}
                         >
-                          history
+                          View history
                         </Link>
                       </div>
                     </td>
                     <td>
                       <div className="provenance">
-                        <strong>{job.provenance ?? "Awaiting verdict"}</strong>
+                        <strong>
+                          {job.provenance === "human"
+                            ? "Human review"
+                            : job.provenance ?? "Awaiting verdict"}
+                        </strong>
                         {job.confidenceBP !== null && (
                           <small>
                             {(job.confidenceBP / 100).toFixed(2)}% confidence
                           </small>
                         )}
                         {job.lane === "human" && (
-                          <small>human review lane (client-chosen)</small>
+                          <small>Selected by client</small>
                         )}
                       </div>
                     </td>
                     <td>
                       <div className="tx-links">
                         {job.statusTxHash && (
-                          <TxLink hash={job.statusTxHash}>job ↗</TxLink>
+                          <TxLink hash={job.statusTxHash}>Job ↗</TxLink>
                         )}
                         {job.verdictTxHash &&
                           job.verdictTxHash !== job.statusTxHash && (
-                            <TxLink hash={job.verdictTxHash}>verdict ↗</TxLink>
+                            <TxLink hash={job.verdictTxHash}>Verdict ↗</TxLink>
                           )}
                       </div>
                     </td>

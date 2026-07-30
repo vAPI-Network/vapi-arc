@@ -224,7 +224,7 @@ jobs:
           demo_html="$(curl --fail --silent --show-error \
             --retry 8 --retry-delay 3 --retry-all-errors \
             "${WEB_URL}/demo")"
-          if [[ "$demo_html" != *"Run the trust network live."* ]]; then
+          if [[ "$demo_html" != *"vAPI Trust Network demo"* ]]; then
             echo "::error::Locked live demo did not render"
             exit 1
           fi

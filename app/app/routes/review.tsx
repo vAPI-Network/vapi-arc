@@ -193,7 +193,7 @@ function ReviewEventLog({ events }: { events: ReviewOrderEvent[] }) {
   if (events.length === 0) {
     return (
       <p className="muted review-event-empty">
-        No durable service events were recorded for this historical order.
+        No events were recorded for this order.
       </p>
     );
   }
@@ -245,7 +245,7 @@ function ReviewOrderCard({
               `Review order ${order.orderId}`}
           </h2>
           <p className="order-caption">
-            Paid by <ShortHash value={order.payer} /> ·{" "}
+            Payer <ShortHash value={order.payer} /> ·{" "}
             {formatUsdcBaseUnits(order.reviewPrice)} USDC
           </p>
         </div>
@@ -273,8 +273,7 @@ function ReviewOrderCard({
           {order.settlementAbortCode && `${order.settlementAbortCode}. `}
           {order.settlementAbortedAt &&
             `Recorded ${formatReviewTime(order.settlementAbortedAt)} UTC. `}
-          Any completed auditor payout or x402 payer refund remains visible in
-          the receipts and durable activity below.
+          Completed payout and refund transactions appear below.
         </div>
       )}
 
@@ -305,9 +304,7 @@ function ReviewOrderCard({
           {order.decision ? (
             <>
               <strong className="decision">
-                {order.decision === "approve"
-                  ? "Approve freelancer"
-                  : "Reject freelancer (refund on settlement)"}
+                {order.decision === "approve" ? "Approved" : "Rejected"}
               </strong>
               {order.reasoning && (
                 <p className="review-reason">{order.reasoning}</p>
@@ -318,28 +315,28 @@ function ReviewOrderCard({
           )}
         </div>
         <div>
-          <span className="data-label">Payment receipt</span>
+          <span className="data-label">x402 payment</span>
           <TransactionReference hash={order.gatewayTransaction}>
-            Gateway payment ↗
+            Gateway reference
           </TransactionReference>
           <small className="meta-line muted">{order.network}</small>
         </div>
         <div>
-          <span className="data-label">On-chain receipts</span>
+          <span className="data-label">Transactions</span>
           <div className="tx-links tx-links-wrapped">
             {order.payoutTransactionHash && (
               <TransactionReference hash={order.payoutTransactionHash}>
-                payout ↗
+                Payout ↗
               </TransactionReference>
             )}
             {order.resolutionTransactionHash && (
               <TransactionReference hash={order.resolutionTransactionHash}>
-                verdict ↗
+                Settlement ↗
               </TransactionReference>
             )}
             {order.refundTransactionHash && (
               <TransactionReference hash={order.refundTransactionHash}>
-                refund ↗
+                Refund ↗
               </TransactionReference>
             )}
             {!order.payoutTransactionHash &&
@@ -379,7 +376,7 @@ function ReviewOrderCard({
                     target="_blank"
                     rel="noreferrer"
                   >
-                    verify canonical record ↗
+                    Verify evidence ↗
                   </a>
                 </div>
               )}
@@ -413,7 +410,7 @@ function ReviewOrderCard({
       </div>
 
       <details className="review-activity">
-        <summary>Durable activity ({order.events.length})</summary>
+        <summary>Activity ({order.events.length})</summary>
         <ReviewEventLog events={order.events} />
       </details>
     </article>
@@ -442,7 +439,7 @@ function UnsponsoredJob({
       </div>
       <div className="review-meta">
         <div>
-          <span className="data-label">Escrow / budget</span>
+          <span className="data-label">Status and budget</span>
           <div className="address-line">
             <StatusChip status="Escalated" />
             <span>{job.budgetUsdc} USDC</span>
@@ -462,7 +459,7 @@ function UnsponsoredJob({
           )}
         </div>
         <div>
-          <span className="data-label">Reason / receipt</span>
+          <span className="data-label">Escalation</span>
           <ShortHash value={job.reasonHash} />
           <div>
             {job.escalationTxHash ? (
@@ -505,14 +502,10 @@ export default function Review({ loaderData }: Route.ComponentProps) {
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Paid human review exchange</p>
           <h1>Review operations</h1>
           <p className="lede">
-            Agents sponsor escalated work through x402. An allowlisted auditor
-            reviews it in Telegram and receives USDC. When the Arc escrow
-            remains resolvable, the router anchors the verdict before funds
-            move; permanent terminal races preserve any completed payout and
-            refund receipts without submitting a router verdict.
+            Review orders are paid through x402. Auditors decide in Telegram;
+            payout and settlement transactions appear below.
           </p>
         </div>
         <NetworkPill />
@@ -539,8 +532,8 @@ export default function Review({ loaderData }: Route.ComponentProps) {
           <div>
             <strong>Review service unavailable</strong>
             <p>
-              {reviewService.message} The public on-chain escalation queue
-              remains available below.
+              {reviewService.message} Open Arc escalations are still shown
+              below.
             </p>
           </div>
         </aside>
@@ -586,7 +579,7 @@ export default function Review({ loaderData }: Route.ComponentProps) {
 
       <section aria-labelledby="pipeline-heading">
         <div className="section-bar">
-          <h2 id="pipeline-heading">Review pipeline</h2>
+          <h2 id="pipeline-heading">Review orders</h2>
           <p>
             {reviewService.ok
               ? `${orders.length} paid order${orders.length === 1 ? "" : "s"}`
@@ -598,13 +591,13 @@ export default function Review({ loaderData }: Route.ComponentProps) {
           <div className="empty-state">
             <h2>
               {reviewService.ok
-                ? "No sponsored review orders"
-                : "Order feed unavailable"}
+                ? "No review orders"
+                : "Review orders unavailable"}
             </h2>
             <p>
               {reviewService.ok
-                ? "Once an agent pays the x402 review endpoint, its auditor, evidence, payout, and escrow receipts will appear here."
-                : "The operations feed could not be loaded. Public Arc escalations remain visible below without assuming whether they have been sponsored."}
+                ? "Paid review orders will appear here."
+                : "The review service could not be loaded. Open Arc escalations are still shown below."}
             </p>
           </div>
         ) : (
@@ -638,10 +631,7 @@ export default function Review({ loaderData }: Route.ComponentProps) {
         {queueKnown && unsponsored.length === 0 ? (
           <div className="empty-state empty-state-compact">
             <h2>No unpaid escalations</h2>
-            <p>
-              Every open escalation is either sponsored or there are currently
-              no jobs awaiting human review.
-            </p>
+            <p>No open jobs are waiting for review sponsorship.</p>
           </div>
         ) : queueKnown ? (
           <div className="cards">
@@ -656,10 +646,7 @@ export default function Review({ loaderData }: Route.ComponentProps) {
         ) : (
           <div className="empty-state empty-state-compact">
             <h2>Queue status unavailable</h2>
-            <p>
-              The dashboard will not claim that the queue is empty until a
-              persisted Arc snapshot is available.
-            </p>
+            <p>The Arc escalation snapshot is not available.</p>
           </div>
         )}
       </section>

@@ -16,9 +16,9 @@ test("readiness stays private and does not block the presenter console", async (
   expect((await stats.json()).readinessRequests).toBe(0);
 
   await page.getByLabel("Presenter passcode").fill("trust-demo");
-  await page.getByRole("button", { name: "Unlock live demo" }).click();
-  await expect(page.getByText("Checking live rails…")).toBeVisible();
-  await expect(page.getByText("All systems ready")).toBeVisible();
+  await page.getByRole("button", { name: "Unlock demo" }).click();
+  await expect(page.getByText("Checking services…")).toBeVisible();
+  await expect(page.getByText("Ready", { exact: true })).toBeVisible();
   stats = await page.request.get(`${mockUrl}/__stats`);
   expect((await stats.json()).readinessRequests).toBe(1);
 });
@@ -26,14 +26,14 @@ test("readiness stays private and does not block the presenter console", async (
 test("two browser clicks reach verified public proof", async ({ page }) => {
   await page.goto("/demo");
   await expect(
-    page.getByRole("heading", { name: "Run the trust network live." }),
+    page.getByRole("heading", { name: "vAPI Trust Network demo" }),
   ).toBeVisible();
   await expect(page.getByText("8.295499 USDC")).toHaveCount(0);
 
   await page.getByLabel("Presenter passcode").fill("trust-demo");
-  await page.getByRole("button", { name: "Unlock live demo" }).click();
-  await expect(page.getByText("All systems ready")).toBeVisible();
-  await page.getByText("All systems ready").click();
+  await page.getByRole("button", { name: "Unlock demo" }).click();
+  await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+  await page.getByText("Ready", { exact: true }).click();
   await expect(page.getByText("8.295499 USDC")).toBeVisible();
 
   await page
@@ -47,12 +47,12 @@ test("two browser clicks reach verified public proof", async ({ page }) => {
   await page
     .getByRole("button", { name: /Pay 0.25 USDC via x402/ })
     .click();
-  await expect(page.getByText("A human is now in the loop")).toBeVisible();
+  await expect(page.getByText("Review sent to Telegram")).toBeVisible();
   await expect(page.getByAltText(/QR code/)).toBeVisible();
   const telegram = await page.request.post(`${mockUrl}/__telegram-verdict`);
   expect(telegram.status()).toBe(202);
 
-  await expect(page.getByText("Public proof complete")).toBeVisible({
+  await expect(page.getByText("Run complete")).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("HumanEvidenceV1 verified")).toBeVisible();
@@ -69,9 +69,9 @@ test("presenter mode hides chrome and mobile puts action first", async ({
 }, testInfo) => {
   await page.goto("/demo");
   await page.getByLabel("Presenter passcode").fill("trust-demo");
-  await page.getByRole("button", { name: "Unlock live demo" }).click();
-  await expect(page.getByText("All systems ready")).toBeVisible();
-  await page.getByRole("link", { name: "Presenter mode" }).click();
+  await page.getByRole("button", { name: "Unlock demo" }).click();
+  await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Present" }).click();
   await expect(page).toHaveURL(/present=1/);
   await expect(page.locator(".site-header")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Enter fullscreen" })).toBeVisible();
@@ -88,7 +88,7 @@ test("presenter mode hides chrome and mobile puts action first", async ({
 test("public proof is terminal-only and sanitized", async ({ page }) => {
   await page.goto("/demo");
   await page.getByLabel("Presenter passcode").fill("trust-demo");
-  await page.getByRole("button", { name: "Unlock live demo" }).click();
+  await page.getByRole("button", { name: "Unlock demo" }).click();
   await page
     .getByRole("button", { name: "Create & fund $1 escrow" })
     .click();

@@ -226,7 +226,7 @@ function parseRunObject(value: unknown): DemoRun {
     title: stringValue(run.title, "API contract compliance review"),
     description: stringValue(
       run.description,
-      "A reasoned human decision settles an agentic freelance escrow.",
+      "A human auditor reviews the deliverable before escrow settlement.",
     ),
     acceptanceCriteria: stringValue(
       run.acceptanceCriteria,
@@ -302,7 +302,7 @@ async function internalRequest(
   if (!url || !token) {
     return failure(
       "not_configured",
-      "The live demo service is not connected to the dashboard.",
+      "The demo service is not connected to the dashboard.",
     );
   }
 
@@ -323,7 +323,7 @@ async function internalRequest(
     if (response.status === 401 || response.status === 403) {
       return failure(
         "unauthorized",
-        "The live demo service rejected the dashboard credentials.",
+        "The demo service rejected the dashboard credentials.",
       );
     }
     if (response.status === 404) {
@@ -341,7 +341,7 @@ async function internalRequest(
         "unavailable",
         stringValue(
           detail?.message ?? nestedError?.message ?? detail?.error,
-          `The live demo service returned HTTP ${response.status}.`,
+          `The demo service returned HTTP ${response.status}.`,
         ),
       );
     }
@@ -354,14 +354,14 @@ async function internalRequest(
     ) {
       return failure(
         "timeout",
-        `The live demo service did not respond within ${(
+        `The demo service did not respond within ${(
           (options.timeoutMs ?? REQUEST_TIMEOUT_MS) / 1_000
         ).toFixed(1)} seconds.`,
       );
     }
     return failure(
       "unavailable",
-      "The live demo service is temporarily unreachable.",
+      "The demo service is temporarily unreachable.",
     );
   }
 }
@@ -369,7 +369,7 @@ async function internalRequest(
 function invalidResponse<T>(noun: string): ReviewServiceResult<T> {
   return failure(
     "invalid_response",
-    `The live demo service returned an unexpected ${noun} payload.`,
+    `The demo service returned an unexpected ${noun} payload.`,
   );
 }
 

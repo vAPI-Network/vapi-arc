@@ -42,8 +42,7 @@ export default function Provider({ loaderData }: Route.ComponentProps) {
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Provider history</p>
-          <h1>Evaluation record</h1>
+          <h1>Provider</h1>
           <div className="address-line">
             <ShortHash value={reputation.address} start={12} end={8} />
             <a
@@ -63,7 +62,7 @@ export default function Provider({ loaderData }: Route.ComponentProps) {
         <aside className="service-banner" role="status">
           <span className="service-indicator" aria-hidden="true" />
           <div>
-            <strong>Showing the last verified reputation snapshot</strong>
+            <strong>Showing saved provider data</strong>
             <p>
               Verified through Arc block {snapshot.latestBlock}.{" "}
               {snapshot.lastError ||
@@ -93,10 +92,7 @@ export default function Provider({ loaderData }: Route.ComponentProps) {
         <div className="stat reliability">
           <span className="stat-value">{reliability}</span>
           <span className="stat-label">
-            Experimental reliability · n={reputation.n}
-          </span>
-          <span className="reliability-note">
-            Experimental — small sample
+            Reliability (experimental, n={reputation.n})
           </span>
         </div>
       </section>
@@ -104,11 +100,10 @@ export default function Provider({ loaderData }: Route.ComponentProps) {
       <section aria-labelledby="history-heading">
         <div className="section-bar">
           <h2 id="history-heading">Settled jobs</h2>
-          <p>Completed and rejected by vAPI Trust Network</p>
         </div>
         {reputation.history.length === 0 ? (
           <div className="empty-state">
-            <h2>No evaluation history</h2>
+            <h2>No settled jobs</h2>
             <p>
               This provider has no recently settled jobs assigned to the
               configured EvaluationRouter.
@@ -145,7 +140,7 @@ export default function Provider({ loaderData }: Route.ComponentProps) {
                     </td>
                     <td>
                       {job.statusTxHash && (
-                        <TxLink hash={job.statusTxHash}>arcscan ↗</TxLink>
+                        <TxLink hash={job.statusTxHash}>Arcscan ↗</TxLink>
                       )}
                     </td>
                   </tr>

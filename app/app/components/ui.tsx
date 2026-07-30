@@ -5,9 +5,6 @@ export const EXPLORER_BASE = "https://testnet.arcscan.app";
 export function SetupBanner() {
   return (
     <aside className="setup-banner" role="status">
-      <span className="setup-mark" aria-hidden="true">
-        ◇
-      </span>
       <div>
         <strong>EvaluationRouter is not configured</strong>
         <p>
