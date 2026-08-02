@@ -362,7 +362,7 @@ function ReviewOrderCard({
                   }
                 >
                   {order.evidenceVerified === true
-                    ? "Canonical hash verified"
+                    ? "Evidence hash matches"
                     : order.evidenceVerified === false
                       ? "Evidence hash mismatch"
                       : "Verification unavailable"}
@@ -447,7 +447,7 @@ function UnsponsoredJob({
           <small className="muted">
             {job.clientRequested
               ? "Human review lane selected by client"
-              : "Escalated by the guarded evaluator"}
+              : "Sent to human review by the evaluator"}
           </small>
         </div>
         <div>

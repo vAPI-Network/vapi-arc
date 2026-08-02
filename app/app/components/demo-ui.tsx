@@ -17,11 +17,11 @@ const EVENT_LABELS: Record<string, string> = {
   demo_run_created: "Demo run created",
   escrow_preparation_started: "Escrow preparation started",
   escrow_job_created: "Freelance job created",
-  human_lane_selected: "HumanOnly lane selected",
+  human_lane_selected: "Human review selected",
   escrow_budget_set: "Escrow budget set",
   escrow_allowance_ready: "USDC allowance ready",
   deliverable_committed: "Deliverable committed",
-  judge_escalation_confirmed: "vAPI escalation confirmed",
+  judge_escalation_confirmed: "Job sent for review",
   human_judgment_required: "Human review required",
   review_order_attached: "Human review order attached",
   demo_run_finalized: "Run finalized",
@@ -29,7 +29,7 @@ const EVENT_LABELS: Record<string, string> = {
   demo_transient_check_failed: "Service check pending",
   run_created: "Demo run created",
   job_created: "Freelance job created",
-  lane_set: "HumanOnly lane selected",
+  lane_set: "Human review selected",
   budget_set: "Escrow budget set",
   allowance_approved: "USDC allowance approved",
   escrow_funded: "Escrow funded",
@@ -44,7 +44,7 @@ const EVENT_LABELS: Record<string, string> = {
   verdict_submitted: "Verdict submitted",
   reviewer_paid: "Auditor payout confirmed",
   escrow_settled: "Escrow settled on Arc",
-  evidence_verified: "Evidence hash verified",
+  evidence_verified: "Evidence hash checked",
   retry_scheduled: "Retry scheduled",
   run_failed: "Run needs attention",
   refund_started: "Escrow refund queued",
@@ -180,8 +180,8 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
           receipt: transaction.createJob,
         },
         {
-          label: "HumanOnly selected",
-          detail: "Human lane set before submission",
+          label: "Human review selected",
+          detail: "Review path set before submission",
           complete: hasEvent(run, "human_lane_selected"),
           receipt: transaction.setLane,
         },
@@ -302,11 +302,11 @@ export function DemoTimeline({ run }: { run: DemoRun }) {
                 : null,
         },
         {
-          label: "Evidence verified",
+          label: "Evidence checked",
           detail:
             run.reviewOrder?.evidenceVerified === true &&
             run.onChainVerified
-              ? "Canonical HumanEvidenceV1"
+              ? "Record matches its on-chain hash"
               : "Waiting for evidence",
           complete:
             run.reviewOrder?.evidenceVerified === true &&
@@ -745,7 +745,7 @@ export function ScenarioDetails({
       <summary>
         <span>
           <strong>API contract compliance review</strong>
-          <small>Scenario: human-review-v1 · HumanOnly</small>
+          <small>Scenario: human-review-v1 · human review</small>
         </span>
         <span>Job details</span>
       </summary>
@@ -779,7 +779,7 @@ export function ScenarioDetails({
           </div>
           <div>
             <dt>Lane</dt>
-            <dd>HumanOnly</dd>
+            <dd>Human review</dd>
           </div>
         </dl>
       </div>
@@ -1097,7 +1097,7 @@ export function FinalProofCard({
               }
             >
               {order.evidenceVerified && run.onChainVerified
-                ? "HumanEvidenceV1 verified on Arc"
+                ? "Evidence record matches Arc"
                 : "Evidence recorded"}
             </span>
             <ShortHash value={order.evidenceHash} />
@@ -1120,7 +1120,7 @@ export function FinalProofCard({
           onClick={copyProof}
           className="demo-button demo-button-primary"
         >
-          {copied ? "Proof link copied" : "Copy proof link"}
+          {copied ? "Run link copied" : "Copy run link"}
         </button>
         {includeActions && (
           <Link to="/demo" className="demo-button demo-button-secondary">
@@ -1160,7 +1160,7 @@ export function LockedDemoPreview({ run }: { run: DemoRun | null }) {
       <div>
         <h2 id="latest-proof">Latest completed run</h2>
         <p>
-          Sign in to start a run. Anyone with a proof link can view completed
+          Sign in to start a run. Anyone with a run link can view completed
           runs.
         </p>
       </div>
@@ -1174,7 +1174,7 @@ export function LockedDemoPreview({ run }: { run: DemoRun | null }) {
             <small>{formatDemoTime(run.completedAt || run.updatedAt)} UTC</small>
           </span>
           <Link to={`/proof/${run.id}`} className="demo-button demo-button-secondary">
-            View proof
+            View run record
           </Link>
         </div>
       ) : (

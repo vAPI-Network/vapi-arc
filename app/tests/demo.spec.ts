@@ -23,7 +23,7 @@ test("readiness stays private and does not block the presenter console", async (
   expect((await stats.json()).readinessRequests).toBe(1);
 });
 
-test("two browser clicks reach verified public proof", async ({ page }) => {
+test("two browser clicks reach a public run record", async ({ page }) => {
   await page.goto("/demo");
   await expect(
     page.getByRole("heading", { name: "vAPI Trust Network demo" }),
@@ -55,7 +55,7 @@ test("two browser clicks reach verified public proof", async ({ page }) => {
   await expect(page.getByText("Run complete")).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText("HumanEvidenceV1 verified")).toBeVisible();
+  await expect(page.getByText("Evidence record matches Arc")).toBeVisible();
   const stats = await page.request.get(`${mockUrl}/__stats`);
   expect((await stats.json()).statusRequests).toBeLessThan(20);
   const proofLink = await page
