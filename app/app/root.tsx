@@ -12,7 +12,23 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 
-export const links: Route.LinksFunction = () => [];
+export const links: Route.LinksFunction = () => [
+  { rel: "icon", href: "/favicon.ico" },
+  {
+    rel: "preload",
+    href: "/fonts/SpaceGrotesk-Regular.woff2",
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
+  },
+  {
+    rel: "preload",
+    href: "/fonts/SpaceGrotesk-Medium.woff2",
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
+  },
+];
 
 export const meta: Route.MetaFunction = () => [
   { title: "vAPI Trust Network · Arc Testnet" },
@@ -31,17 +47,29 @@ function Header() {
     <header className="site-header">
       <div className="shell header-inner">
         <NavLink to="/" className="wordmark" aria-label="vAPI Trust Network home">
-          vAPI Trust Network<span aria-hidden="true">.</span>
+          <picture>
+            <source
+              media="(prefers-color-scheme: dark)"
+              srcSet="/brand/vapi-wordmark-on-dark.png"
+            />
+            <img
+              src="/brand/vapi-wordmark-on-light.png"
+              alt=""
+              width="469"
+              height="154"
+            />
+          </picture>
+          <span>Trust Network</span>
         </NavLink>
         <nav aria-label="Primary navigation" className="primary-nav">
           <NavLink to="/" end className={navClass}>
-            Jobs
+            Feed
           </NavLink>
           <NavLink to="/demo" className={navClass}>
             Demo
           </NavLink>
           <NavLink to="/review" className={navClass}>
-            Reviews
+            Review
           </NavLink>
         </nav>
       </div>

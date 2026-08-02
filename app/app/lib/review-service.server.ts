@@ -499,7 +499,7 @@ export function reputationFromSnapshot(
     volumeUsdc: formatUnits(volume, 6),
     reliability: rated ? completed / n : null,
     rated,
-    disclaimer: "Experimental — small sample",
+    disclaimer: "Experimental, small sample",
     history,
   };
 }

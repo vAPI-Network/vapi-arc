@@ -16,8 +16,8 @@ const RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i;
 export const meta: Route.MetaFunction = ({ data }) => [
   {
     title: data?.run
-      ? `Review proof · Job #${data.run.jobId || "—"} · vAPI`
-      : "Review proof · vAPI",
+      ? `Run record · Job #${data.run.jobId || "—"} · vAPI`
+      : "Run record · vAPI",
   },
   {
     name: "description",
@@ -37,7 +37,7 @@ export async function loader({ params }: Route.LoaderArgs) {
     });
   }
   if (!isDemoRunTerminal(result.data)) {
-    throw new Response("This proof is not published until the run is final.", {
+    throw new Response("This run is not published until it is final.", {
       status: 404,
     });
   }
@@ -50,7 +50,7 @@ export default function Proof({ loaderData }: Route.ComponentProps) {
     <div className="proof-page">
       <header className="proof-hero">
         <div>
-          <h1>Human review proof</h1>
+          <h1>Human review run</h1>
           <p className="lede">
             A read-only record of the review payment, verdict, auditor payout,
             and escrow settlement on Arc Testnet.
@@ -58,7 +58,7 @@ export default function Proof({ loaderData }: Route.ComponentProps) {
         </div>
         <div className="proof-network">
           <span className="network-dot" aria-hidden="true" />
-          Verified on Arc Testnet
+          Arc Testnet record
         </div>
       </header>
 

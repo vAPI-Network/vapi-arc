@@ -1,17 +1,15 @@
 # vAPI Trust Network
 
-**The outcome and trust layer for agentic freelance work. Its contracts are
-live on Arc Testnet; the paid human-review service is ready for a credentialed
-end-to-end run.**
-
-vAPI combines ERC-8183 escrow, guarded AI evaluation, accountless x402 review
-payments, paid human auditors in Telegram, and Circle wallet settlement in one
-product.
+vAPI reviews ERC-8183 freelance jobs on Arc before escrow funds are released.
+AIAllowed jobs can settle after deterministic checks validate the evaluator's
+response. HumanOnly and escalated jobs can purchase a Telegram review for 0.25
+USDC through Circle Gateway. A Circle Developer-Controlled Wallet pays the
+auditor 0.20 USDC and records the verdict on Arc.
 
 ```text
 agent escrows a freelance job
         ↓
-AI settles safe work ───────────────→ provider paid / client refunded
+AI verdict passes policy checks ───→ provider paid / client refunded
         ↓ escalate
 agent pays the x402 review endpoint
         ↓
@@ -22,7 +20,7 @@ Circle Wallet pays auditor + submits verdict
 ERC-8183 escrow pays provider or refunds client
 ```
 
-## Why it exists
+## How settlement works
 
 ERC-8183 locks funds until an evaluator approves or rejects submitted work, and
 settlement is terminal. vAPI holds that evaluator seat with a client-selected
@@ -37,14 +35,14 @@ review lane:
    USDC through Circle Gateway. The first eligible council member claims the
    review in Telegram and receives 0.20 USDC regardless of approve/reject.
 
-Every human resolution anchors the reviewer wallet, reward, evidence hash, and
-reviewer payout transaction on Arc. The dashboard exposes objective history and
-receipts without inventing an unverifiable “trust score.”
+Each human resolution records the reviewer wallet, reward, evidence hash, and
+payout transaction on Arc. The dashboard shows review counts, decisions,
+response times, rewards, and transaction receipts.
 
-## Live demo console
+## Demo console
 
-The hosted `/demo` console turns the complete HumanOnly path into two browser
-actions and one Telegram decision:
+The hosted `/demo` console runs the HumanOnly path with two browser actions and
+one Telegram decision:
 
 1. Unlock live controls with the presenter passcode and confirm every Arc,
    Gateway, Telegram, Circle, wallet, and council readiness check is green.
@@ -52,14 +50,13 @@ actions and one Telegram decision:
    job, selects HumanOnly before submission, funds it, commits the deliverable,
    and waits for the real judge to escalate it.
 3. Select **Agent purchases human review · $0.25**. The console records the
-   genuine `402 → Gateway authorization → 202` exchange and waits for Telegram.
+   `402 → Gateway authorization → 202` exchange and waits for Telegram.
 4. The allowlisted auditor claims, taps approve or reject, and replies with a
    written reason. The browser then follows the $0.20 payout, router settlement,
    evidence verification, and Arcscan receipts automatically.
 
-Routine demo runs require no terminal, copied job IDs, browser wallet, or manual
-refresh. Private keys remain only in the single-replica `vapi-review` Railway
-service; completed `/proof/:runId` pages are public and read-only.
+Private keys remain in the single-replica `vapi-review` Railway service.
+Completed `/proof/:runId` pages are public and read-only.
 
 ## Live contracts
 
@@ -70,13 +67,13 @@ service; completed `/proof/:runId` pages are public and read-only.
 - Circle Developer-Controlled Wallet / human resolver:
   [`0x025d2216594469E19EA70F38ef9D08E47e5dd3E7`](https://testnet.arcscan.app/address/0x025d2216594469E19EA70F38ef9D08E47e5dd3E7)
 
-Fresh v3 proof jobs are `159668` (AI completed), `159669` (injection
+Deployed v3 jobs are `159668` (AI completed), `159669` (injection
 escalation), and `159670` (HumanOnly escalation).
 
-Those jobs prove the deployed router’s AI and escalation lanes. A live UI
-rehearsal also created and funded job `159917` and accepted a genuine 0.25 USDC
-x402 payment; its Telegram review expired before a verdict, so the complete
-auditor-payout and settlement chain still needs a successful live rehearsal.
+Those jobs exercise the router's AI and escalation paths. A UI rehearsal also
+created and funded job `159917` and accepted a 0.25 USDC x402 payment. Its
+Telegram review expired before a verdict. The next rehearsal must confirm the
+auditor payout and escrow settlement.
 
 ## Run locally
 
@@ -88,7 +85,7 @@ cp .env.example .env
 # /health stays degraded and paid execution remains disabled.
 export REVIEW_ALLOW_PARTIAL_CONFIG=true
 
-# Offline guarded-judge fixture
+# Offline evaluator fixture
 pnpm -C core dry-run
 
 # Paid review API, Telegram dispatcher, and Circle transaction reconciler
@@ -120,20 +117,20 @@ the other vAPI repos. It is one repository and one product; Railway is
 configured to run the RRV7 dashboard, review API/worker, and AI judge as three
 services from the same source.
 
-- `contracts/` — EvaluationRouter v3 and 37 Foundry tests.
-- `core/` — AI judge, x402 review service, SQLite state machine, Telegram bot,
+- `contracts/`: EvaluationRouter v3 and 37 Foundry tests.
+- `core/`: AI judge, x402 review service, SQLite state machine, Telegram bot,
   Circle wallet orchestration, evidence, reviewer CLI, and 108 service tests.
-- `app/` — live demo console, public proof pages, Arc feed, paid-review
+- `app/`: demo console, public run records, Arc feed, paid-review
   operations timeline, and reviewer history.
-- `adapters/arc/` — pinned Circle contract ABIs.
-- `docs/` — trust model, architecture, and submission material.
+- `adapters/arc/`: pinned Circle contract ABIs.
+- `docs/`: review model, architecture, and submission material.
 
 Railway config-as-code and persistent-volume instructions live in
 [`docs/deployment/railway.md`](docs/deployment/railway.md). The hackathon
 deployment uses single-replica SQLite and does not require Supabase.
 
-The project keeps Circle’s ERC-8183 escrow as its single settlement truth. It
-borrows asynchronous wallet patterns from
+The project uses Circle's ERC-8183 escrow for job settlement. Its asynchronous
+wallet handling follows patterns from
 [arc-escrow](https://github.com/circlefin/arc-escrow), x402 seller patterns from
 [arc-nanopayments](https://github.com/circlefin/arc-nanopayments), and agent
 buyer patterns from
