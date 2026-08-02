@@ -55,3 +55,7 @@ agents.
 5. Select Agentic Economy Track and submit.
 
 A demo video is not required for Checkpoint 2.
+
+Do not publish `DEMO_ACCESS_CODE`. Completed runs are public. Share a temporary
+presenter code privately only when a judge requests a hands-on test, then rotate
+it afterward.
