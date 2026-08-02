@@ -52,8 +52,8 @@ with reason code `human_lane_requested`.
 Deploy new router → verify source on Arcscan → update `.env`
 (`ROUTER_ADDRESS`), pinned ABI in `adapters/arc/`, `DEMO_JOB_IDS` → reseed a
 three-job demo: AI-settled, injection-escalated-rejected, human-lane-approved
-via the review UI. The previous router (`0x215766ef...af3d4`) stays on-chain
-as history; checkpoint-2 links to it remain valid.
+via the review UI. The previous router (`0x215766ef...af3d4`) stays on-chain as
+history.
 
 ## Copy
 
