@@ -159,18 +159,17 @@ wallet setup details.
 
 ## Arc deployment
 
-The controller replaces the complete marked block below from the canonical deployment output. Do
-not treat `PENDING_DEPLOY_*` tokens as addresses or proof.
+Deployed to Arc Testnet (chain `5042002`, explorer `https://testnet.arcscan.app`) on 2026-08-09.
 
 <!-- PENDING-DEPLOY:BEGIN -->
 | Contract | Arc Testnet address | Arcscan proof |
 | --- | --- | --- |
-| `EscrowFactory` | `PENDING_DEPLOY_ESCROW_FACTORY` | `PENDING_DEPLOY_ESCROW_FACTORY_EXPLORER` |
-| `EscrowV1` implementation | `PENDING_DEPLOY_ESCROW_IMPLEMENTATION` | `PENDING_DEPLOY_ESCROW_IMPLEMENTATION_EXPLORER` |
-| `DisputePanel` | `PENDING_DEPLOY_DISPUTE_PANEL` | `PENDING_DEPLOY_DISPUTE_PANEL_EXPLORER` |
-| `ArbiterRegistry` | `PENDING_DEPLOY_ARBITER_REGISTRY` | `PENDING_DEPLOY_ARBITER_REGISTRY_EXPLORER` |
-| `FeeRouter` | `PENDING_DEPLOY_FEE_ROUTER` | `PENDING_DEPLOY_FEE_ROUTER_EXPLORER` |
-| `ReputationRegistryV0` | `PENDING_DEPLOY_REPUTATION_REGISTRY` | `PENDING_DEPLOY_REPUTATION_REGISTRY_EXPLORER` |
+| `EscrowFactory` | `0xb6546d4A7FC5B75FF04828165d17e6a4ad397Da3` | [view](https://testnet.arcscan.app/address/0xb6546d4A7FC5B75FF04828165d17e6a4ad397Da3) |
+| `EscrowV1` implementation | `0x6A0A6fec9002A5b13AEB08F8Dd001b22739C6a5B` | [view](https://testnet.arcscan.app/address/0x6A0A6fec9002A5b13AEB08F8Dd001b22739C6a5B) |
+| `DisputePanel` | `0x0EA143967B3470948329F0304cBBE78Ba8cd827B` | [view](https://testnet.arcscan.app/address/0x0EA143967B3470948329F0304cBBE78Ba8cd827B) |
+| `ArbiterRegistry` | `0x4e1395F57DB8781aDdAbeaf689898f82fe6abb59` | [view](https://testnet.arcscan.app/address/0x4e1395F57DB8781aDdAbeaf689898f82fe6abb59) |
+| `FeeRouter` | `0x2ab6ba6005b7bE5BCD30F24e8d0E5921e8e489e8` | [view](https://testnet.arcscan.app/address/0x2ab6ba6005b7bE5BCD30F24e8d0E5921e8e489e8) |
+| `ReputationRegistryV0` | `0x3962f3e536A55F230bF8Bfa133518eb1Fe1c51e3` | [view](https://testnet.arcscan.app/address/0x3962f3e536A55F230bF8Bfa133518eb1Fe1c51e3) |
 <!-- PENDING-DEPLOY:END -->
 
 Individual order addresses are emitted by `EscrowFactory` and are not singleton deployment rows.
