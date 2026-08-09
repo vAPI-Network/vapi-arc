@@ -1,171 +1,263 @@
-import { Link } from "react-router";
+import { useCallback, useMemo, useState } from "react";
+import { Link, useLoaderData } from "react-router";
+import {
+  getAddress,
+  isAddress,
+  keccak256,
+  parseUnits,
+  toBytes,
+  toHex,
+  type Hex,
+} from "viem";
 
 import type { Route } from "./+types/home";
 import {
-  NetworkPill,
-  SetupBanner,
-  ShortHash,
-  StatusChip,
-  TxLink,
-} from "~/components/ui";
-import { getDashboardChainSnapshot } from "~/lib/review-service.server";
+  AddressPill,
+  ChainError,
+  Countdown,
+  EmptyState,
+  HashField,
+  StateChip,
+  TxButton,
+  formatUsdc,
+  usePolling,
+} from "~/components/chain-ui";
+import { escrowFactoryAbi } from "~/lib/abi/escrow-v1";
+import { CHAIN_POLL_INTERVAL_MS, getServerChainConfig } from "~/lib/chains";
+import { readMarketplace } from "~/lib/chain-data";
+import { useWallet } from "~/lib/wallet";
+
+export const meta: Route.MetaFunction = () => [
+  { title: "Work marketplace · vAPI on Arc" },
+  {
+    name: "description",
+    content: "Create and inspect Work + Verify escrows directly from Arc Testnet.",
+  },
+];
 
 export async function loader() {
-  const result = await getDashboardChainSnapshot();
-  if (!result.ok) {
-    return {
-      configured: true,
-      rows: [],
-      snapshot: null,
-      serviceError: result.message,
-    };
-  }
-  return {
-    configured: result.data.configured,
-    rows: result.data.feed,
-    snapshot: result.data,
-    serviceError: null,
-  };
+  const config = getServerChainConfig();
+  return { config, snapshot: await readMarketplace(config) };
 }
 
-export default function Home({ loaderData }: Route.ComponentProps) {
-  const { configured, rows, snapshot, serviceError } = loaderData;
-  const snapshotProblem =
-    serviceError ??
-    (snapshot?.status === "stale" || snapshot?.status === "degraded"
-      ? snapshot.lastError || "The last Arc refresh did not complete."
-      : null);
-  const indexWarming = snapshot?.status === "syncing";
-  const snapshotHasData = Boolean(snapshot?.indexedAt);
+function randomSalt(): Hex {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return toHex(bytes);
+}
+
+export default function Marketplace() {
+  const { config, snapshot: initial } = useLoaderData<typeof loader>();
+  const wallet = useWallet();
+  const [buyer, setBuyer] = useState("");
+  const [amount, setAmount] = useState("125");
+  const [workDays, setWorkDays] = useState("7");
+  const [reviewHours, setReviewHours] = useState("48");
+  const [terms, setTerms] = useState("");
+  const load = useCallback(() => readMarketplace(config), [config]);
+  const [snapshot, setSnapshot] = usePolling(
+    initial,
+    load,
+    config.mock ? 0 : CHAIN_POLL_INTERVAL_MS,
+  );
+  const termsHash = useMemo(
+    () => keccak256(toBytes(terms.trim())),
+    [terms],
+  );
+  const factory = config.contracts.factory;
+  const formValid =
+    Boolean(factory && wallet.account && isAddress(buyer) && terms.trim()) &&
+    Number(amount) > 0 &&
+    Number(workDays) > 0 &&
+    Number(reviewHours) > 0;
+
+  const createEscrow = () => {
+    if (!factory || !wallet.account || !isAddress(buyer)) {
+      throw new Error("Connect a vendor wallet and enter a valid buyer address.");
+    }
+    return wallet.writeContract({
+      address: factory,
+      abi: escrowFactoryAbi,
+      functionName: "createEscrow",
+      args: [
+        getAddress(buyer),
+        config.usdc,
+        parseUnits(amount, 6),
+        BigInt(Math.round(Number(workDays) * 86_400)),
+        BigInt(Math.round(Number(reviewHours) * 3_600)),
+        termsHash,
+        randomSalt(),
+      ],
+    });
+  };
 
   return (
-    <>
-      <div className="page-heading">
+    <div className="marketplace-page">
+      <header className="page-intro marketplace-intro">
         <div>
-          <h1>Job evaluations</h1>
-          <p className="lede">
-            ERC-8183 job outcomes and transaction receipts from Arc Testnet.
-            Jobs settle automatically or go to human review.
+          <h1>Work marketplace</h1>
+          <p className="roman-subtitle">The Forum · every agreement begins in public</p>
+          <p className="page-lede">
+            Direct USDC escrows between buyers and vendors, enumerated from the
+            factory and verified against each clone.
           </p>
         </div>
-        <NetworkPill />
-      </div>
+        <div className="chain-pulse" aria-label="Live Arc Testnet data">
+          <span className="network-dot" aria-hidden="true" />
+          <span>
+            <strong>Arc Testnet</strong>
+            <small>
+              {snapshot.blockNumber ? `Block ${snapshot.blockNumber}` : "Awaiting deployment"}
+            </small>
+          </span>
+        </div>
+      </header>
 
-      {!configured && <SetupBanner />}
+      <ChainError message={snapshot.error} />
 
-      {(snapshotProblem || indexWarming) && (
-        <aside className="service-banner" role="status">
-          <span className="service-indicator" aria-hidden="true" />
-          <div>
-            <strong>
-              {indexWarming
-                ? "Indexing Arc transactions"
-                : snapshotHasData
-                  ? "Showing saved Arc data"
-                  : "Arc index unavailable"}
-            </strong>
-            <p>
-              {indexWarming
-                ? "Jobs will appear when the first index completes."
-                : `${snapshotProblem} The indexer will retry automatically.`}
-            </p>
+      <section className="market-grid" aria-labelledby="open-escrows-heading">
+        <div className="market-list">
+          <div className="section-heading">
+            <div>
+              <h2 id="open-escrows-heading">Escrows on Arc</h2>
+              <p>State rechecked every 12 seconds through one multicall.</p>
+            </div>
+            <span className="record-count mono">
+              {snapshot.orders.length} {snapshot.orders.length === 1 ? "order" : "orders"}
+            </span>
+          </div>
+
+          {!factory ? (
+            <EmptyState title="Contract addresses pending">
+              <p>
+                The interface is ready. Set <code>VAPI_ESCROW_FACTORY</code> after
+                the deployment track publishes the Arc address.
+              </p>
+            </EmptyState>
+          ) : snapshot.orders.length === 0 ? (
+            <EmptyState title="No escrows have been opened">
+              <p>
+                The factory has no <code>EscrowCreated</code> events from the
+                configured deployment block. A connected vendor can open the first.
+              </p>
+            </EmptyState>
+          ) : (
+            <div className="order-list">
+              {snapshot.orders.map((order) => (
+                <article className="order-row" key={order.address}>
+                  <Link to={`/orders/${order.address}`} className="order-row-main">
+                    <span className="order-row-state">
+                      <StateChip state={order.state} />
+                      <span className="block-mark mono">#{order.blockNumber}</span>
+                    </span>
+                    <strong className="order-amount">{formatUsdc(order.amount)}</strong>
+                    <span className="order-address mono">
+                      {order.address.slice(0, 10)}…{order.address.slice(-6)}
+                    </span>
+                  </Link>
+                  <div className="order-parties">
+                    <AddressPill address={order.seller} label="Vendor" />
+                    <span className="party-arrow" aria-hidden="true" />
+                    <AddressPill address={order.buyer} label="Buyer" />
+                  </div>
+                  <div className="order-row-deadline">
+                    <span>Offer window</span>
+                    <Countdown
+                      deadline={order.offerDeadline}
+                      label="Offer window"
+                      compact
+                    />
+                  </div>
+                  <Link className="row-link" to={`/orders/${order.address}`}>
+                    Inspect order
+                  </Link>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <aside className="create-panel" aria-labelledby="create-heading">
+          <div className="create-panel-heading">
+            <div>
+              <h2 id="create-heading">Create an escrow</h2>
+              <p>Vendor action</p>
+            </div>
+            {wallet.account && <span className="role-badge">Vendor</span>}
+          </div>
+          <div className="form-stack">
+            <label className="field">
+              <span>Buyer address</span>
+              <input
+                value={buyer}
+                onChange={(event) => setBuyer(event.target.value)}
+                placeholder="0x…"
+                spellCheck={false}
+              />
+            </label>
+            <div className="field-split">
+              <label className="field">
+                <span>Amount</span>
+                <div className="input-affix">
+                  <input
+                    type="number"
+                    min="0.000001"
+                    step="0.000001"
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                  />
+                  <b>USDC</b>
+                </div>
+              </label>
+              <label className="field">
+                <span>Work duration</span>
+                <div className="input-affix">
+                  <input
+                    type="number"
+                    min="1"
+                    value={workDays}
+                    onChange={(event) => setWorkDays(event.target.value)}
+                  />
+                  <b>days</b>
+                </div>
+              </label>
+            </div>
+            <label className="field">
+              <span>Buyer review window</span>
+              <div className="input-affix">
+                <input
+                  type="number"
+                  min="1"
+                  value={reviewHours}
+                  onChange={(event) => setReviewHours(event.target.value)}
+                />
+                <b>hours</b>
+              </div>
+            </label>
+            <label className="field">
+              <span>Terms</span>
+              <textarea
+                value={terms}
+                onChange={(event) => setTerms(event.target.value)}
+                placeholder="Describe the delivery and acceptance criteria."
+                rows={5}
+              />
+            </label>
+            <HashField value={termsHash} label="Terms hash · keccak256 UTF-8" />
+            {!wallet.connected && (
+              <p className="form-note">Connect the vendor account to create this escrow.</p>
+            )}
+            <TxButton
+              config={config}
+              execute={createEscrow}
+              disabled={!formValid}
+              onConfirmed={async () => setSnapshot(await load())}
+            >
+              Create escrow on Arc
+            </TxButton>
           </div>
         </aside>
-      )}
-
-      <section aria-labelledby="jobs-heading">
-        <div className="section-bar">
-          <h2 id="jobs-heading">Jobs</h2>
-          <p>
-            {snapshot?.latestBlock
-              ? `Verified through Arc block ${snapshot.latestBlock}`
-              : "No indexed block yet"}
-          </p>
-        </div>
-
-        {rows.length === 0 ? (
-          <div className="empty-state">
-            <h2>
-              {indexWarming
-                ? "Indexing Arc transactions"
-                : serviceError || !snapshotHasData
-                  ? "Jobs temporarily unavailable"
-                  : "No evaluated jobs yet"}
-            </h2>
-            <p>
-              {indexWarming
-                ? "Jobs will appear when the first index completes."
-                : "Submitted jobs assigned to the EvaluationRouter will appear here after evaluation."}
-            </p>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Job</th>
-                  <th>Status</th>
-                  <th>Budget</th>
-                  <th>Provider</th>
-                  <th>Decision source</th>
-                  <th>Arcscan</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((job) => (
-                  <tr key={job.id}>
-                    <td className="job-id">#{job.id}</td>
-                    <td>
-                      <StatusChip status={job.status} />
-                    </td>
-                    <td>{job.budgetUsdc} USDC</td>
-                    <td>
-                      <div className="address-line">
-                        <ShortHash value={job.provider} />
-                        <Link
-                          to={`/provider/${job.provider}`}
-                          className="subtle-link"
-                          aria-label={`View evaluation history for ${job.provider}`}
-                        >
-                          View history
-                        </Link>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="provenance">
-                        <strong>
-                          {job.provenance === "human"
-                            ? "Human review"
-                            : job.provenance ?? "Awaiting verdict"}
-                        </strong>
-                        {job.confidenceBP !== null && (
-                          <small>
-                            {(job.confidenceBP / 100).toFixed(2)}% confidence
-                          </small>
-                        )}
-                        {job.lane === "human" && (
-                          <small>Selected by client</small>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="tx-links">
-                        {job.statusTxHash && (
-                          <TxLink hash={job.statusTxHash}>Job ↗</TxLink>
-                        )}
-                        {job.verdictTxHash &&
-                          job.verdictTxHash !== job.statusTxHash && (
-                            <TxLink hash={job.verdictTxHash}>Verdict ↗</TxLink>
-                          )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
-    </>
+    </div>
   );
 }
