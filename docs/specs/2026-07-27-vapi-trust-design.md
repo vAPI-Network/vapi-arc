@@ -1,3 +1,5 @@
+Status: superseded by the Work + Verify escrow submission (see README).
+
 # Arc hackathon: vAPI EvaluationRouter — auditable evaluator-as-a-service for ERC-8183 (submit by Sun Aug 2)
 
 > **Historical design record.** This document is superseded by the

@@ -1,141 +1,250 @@
-# vAPI Trust Network
+# vAPI Work + Verify on Arc
 
-vAPI reviews ERC-8183 freelance jobs on Arc before escrow funds are released.
-AIAllowed jobs can settle after deterministic checks validate the evaluator's
-response. HumanOnly and escalated jobs can purchase a Telegram review for 0.25
-USDC through Circle Gateway. A Circle Developer-Controlled Wallet pays the
-auditor 0.20 USDC and records the verdict on Arc.
+**Escrow settles the money. Verification settles the work. Reputation compounds the result.**
 
-```text
-agent escrows a freelance job
-        ↓
-AI verdict passes policy checks ───→ provider paid / client refunded
-        ↓ escalate
-agent pays the x402 review endpoint
-        ↓
-allowlisted auditor claims in Telegram
-        ↓
-Circle Wallet pays auditor + submits verdict
-        ↓
-ERC-8183 escrow pays provider or refunds client
+Payment rails can move USDC in under a second; real work cannot be judged in under a second.
+Deliverables are subjective, buyers can disappear, sellers can miss deadlines, and either party can
+dispute the result. vAPI fills that gap with a non-custodial escrow marketplace, time-bounded
+verification, and permissionless on-chain reputation.
+
+Each order is its own `EscrowV1` contract. The buyer's USDC is held by that clone—not by a platform
+operator—until fixed settlement rules release it, refund it, split it, or a dispute chooses one of
+those same outcomes. No resolver can nominate a fourth recipient.
+
+## What we built
+
+- **A marketplace, not a managed wallet.** `EscrowFactory` creates deterministic EIP-1167 clones;
+  each clone binds one seller, buyer, USDC amount, terms hash, work duration, and review window. Its
+  work deadline starts when funding succeeds.
+- **Six explicit states.** `CREATED`, `LOCKED`, `SUBMITTED`, `DISPUTED`, `RESOLVED`, and `EXPIRED`
+  make every live and terminal condition inspectable.
+- **Silence with a defined meaning.** Miss the work deadline and anyone can refund the buyer. Let a
+  submitted delivery pass its review deadline and anyone can release the seller's payout.
+- **Commit-reveal disputes.** The current Arc deployment seeds exactly three distinct arbiters. Its
+  fixed two-vote threshold is a ≥2/3 majority for `RELEASE` or `REFUND`; every other executable
+  tally resolves to `SPLIT`.
+- **A structurally constrained liveness fallback.** After the deadlock timeout, the council can
+  choose only `RELEASE`, `REFUND`, or `SPLIT`. It cannot redirect escrow to itself or another address.
+- **Atomic fees.** Seller-bound payouts pass through `FeeRouter` in the same settlement transaction.
+  The fee is fixed at 500 bp: 5% of the seller's gross. Full refunds are fee-free; on a split, the
+  buyer receives half first and the fee applies only to the seller's remainder.
+- **Reputation from settled facts.** Anyone may attest a registered, resolved escrow once.
+  `ReputationRegistryV0` records raw settled/released/refunded/disputed/split counters for both
+  parties; the current “Trust Score” is intentionally not an opaque scalar.
+
+## Architecture
+
+The chain is the backend. The app reads contract state and prepares wallet transactions across four
+views:
+
+| View | Purpose |
+| --- | --- |
+| **The Forum** | Browse orders and create a seller offer. |
+| **Order detail** | Fund, submit, release, refund, dispute, and inspect deadlines and receipts. |
+| **The Praetors** | Follow dispute phases and submit an allowlisted arbiter's commit or reveal. |
+| **The Census** | Read the registry's raw, on-chain settlement counters for an address. |
+
+The contract boundary is deliberately small:
+
+| Component | Responsibility |
+| --- | --- |
+| `EscrowFactory` | Enforces the one supported payment token and 500 bp fee configuration; deploys and registers deterministic `EscrowV1` clones. |
+| `EscrowV1` | Holds one order's USDC and runs its lifecycle, timeouts, evidence hashes, and fixed settlement outcomes. |
+| `ArbiterRegistry` | Owner-managed allowlist; the deployment script seeds three arbiters. The registry itself is not capped at three. |
+| `DisputePanel` | Opens evidence, commit, and reveal windows; counts revealed votes; permissionlessly executes an outcome. |
+| `FeeRouter` | Atomically transfers seller net and the configured treasury fee on seller-bound payouts. |
+| `ReputationRegistryV0` | Permissionlessly attests each registered, resolved escrow once and increments raw counters for buyer and seller. |
+
+### Six-state escrow
+
+`NONE` is only the uninitialized clone sentinel, so it is not one of the six public lifecycle
+states.
+
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED: createEscrow / initialize clone
+    CREATED --> LOCKED: depositFunds or fundWithAuthorization
+    CREATED --> EXPIRED: cancelOffer after offerDeadline
+    LOCKED --> SUBMITTED: seller submitDelivery
+    LOCKED --> DISPUTED: either party raiseDispute
+    SUBMITTED --> DISPUTED: either party raiseDispute
+    LOCKED --> RESOLVED: seller refundBuyer
+    SUBMITTED --> RESOLVED: seller refundBuyer
+    SUBMITTED --> RESOLVED: buyer releaseFunds
+    LOCKED --> RESOLVED: timeoutRefund after workDeadline — seller silence = consent to refund
+    SUBMITTED --> RESOLVED: finalize after reviewDeadline — buyer silence = consent to release
+    DISPUTED --> RESOLVED: panel outcome or time-gated council fallback
+    RESOLVED --> [*]
+    EXPIRED --> [*]
 ```
 
-## How settlement works
+Funding pulls exactly the configured amount from the designated buyer, either by allowance or the
+implemented EIP-3009 `receiveWithAuthorization` path. Delivery stores a hash on-chain and starts the
+review clock. Cooperative release/refund can settle early; timeout calls are permissionless after
+their deadlines.
 
-ERC-8183 locks funds until an evaluator approves or rejects submitted work, and
-settlement is terminal. vAPI holds that evaluator seat with a client-selected
-review lane:
+### Dispute path
 
-1. **AIAllowed** handles narrow, low-value, rubric-checkable work. The model
-   never holds a key; deterministic policy checks its structured response
-   before a restricted oracle can settle.
-2. **HumanOnly** skips the model. It and every uncertain, over-cap, or hostile
-   AI result are escalated before funds move.
-3. **Paid human review** lets an agent sponsor an escalated decision for 0.25
-   USDC through Circle Gateway. The first eligible council member claims the
-   review in Telegram and receives 0.20 USDC regardless of approve/reject.
+Either party can dispute a `LOCKED` or `SUBMITTED` order. A counterparty may submit one
+counter-evidence hash during the evidence window. Commits bind `escrow + arbiter + vote + salt`, and
+reveals are accepted only in the following reveal window.
 
-Each human resolution records the reviewer wallet, reward, evidence hash, and
-payout transaction on Arc. The dashboard shows review counts, decisions,
-response times, rewards, and transaction receipts.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Buyer or seller
+    participant E as EscrowV1 clone
+    participant P as DisputePanel
+    participant A as 3 allowlisted arbiters
+    participant X as Permissionless executor
+    participant F as FeeRouter
+    participant S as Seller
+    participant T as Treasury
 
-## Demo console
+    B->>E: raiseDispute(evidenceHash)
+    E->>P: open(raiser, evidenceHash)
+    Note over E,P: Evidence window, counterparty may submit one hash
+    loop Each of 3 arbiters
+        A->>P: commit(escrow, commitment)
+    end
+    loop Each of 3 arbiters
+        A->>P: reveal(escrow, RELEASE, salt)
+    end
+    X->>P: execute(escrow)
+    Note over P: 2+ RELEASE wins, 2+ REFUND wins, otherwise SPLIT
+    P->>E: resolveDispute(RELEASE)
+    E->>F: distribute(USDC, seller, gross)
+    F->>S: seller net
+    F->>T: 500 bp fee
+    F-->>E: net and fee
+```
 
-The hosted `/demo` console runs the HumanOnly path with two browser actions and
-one Telegram decision:
+The diagram shows a `RELEASE` outcome so the fee split is visible. A `REFUND` sends the full amount
+straight back to the buyer without calling `FeeRouter`; a `SPLIT` refunds half to the buyer and
+routes only the seller remainder through `FeeRouter`.
 
-1. Unlock live controls with the presenter passcode and confirm every Arc,
-   Gateway, Telegram, Circle, wallet, and council readiness check is green.
-2. Select **Create & fund $1 escrow**. The server-owned demo agent creates the
-   job, selects HumanOnly before submission, funds it, commits the deliverable,
-   and waits for the real judge to escalate it.
-3. Select **Agent purchases human review · $0.25**. The console records the
-   `402 → Gateway authorization → 202` exchange and waits for Telegram.
-4. The allowlisted auditor claims, taps approve or reject, and replies with a
-   written reason. The browser then follows the $0.20 payout, router settlement,
-   evidence verification, and Arcscan receipts automatically.
+Execution is available as soon as three votes have been revealed, or after the reveal deadline with
+fewer. Two release votes choose `RELEASE`; otherwise two refund votes choose `REFUND`; all other
+executable tallies—including 1–1–1 or no reveals after the deadline—choose `SPLIT`. The council is a
+separate time-gated liveness path, not an on-chain finding that the panel is deadlocked. “≥2/3”
+describes the deployed three-arbiter configuration: if the registry owner later adds arbiters, the
+contract's outcome threshold remains two.
 
-Private keys remain in the single-replica `vapi-review` Railway service.
-Completed `/proof/:runId` pages are public and read-only.
+## Why Arc
 
-## Live contracts
+Arc makes the settlement leg disappear into the interaction: confirmed transactions have
+[sub-second deterministic finality](https://docs.arc.io/arc/concepts/deterministic-finality), and
+USDC is both the native gas asset and the value being escrowed. The same balance is exposed through
+the 6-decimal ERC-20 precompile/interface at
+[`0x3600000000000000000000000000000000000000`](https://testnet.arcscan.app/address/0x3600000000000000000000000000000000000000),
+so users do not need a second volatile token just to pay for a USDC order. See Arc's
+[contract-address reference](https://docs.arc.io/arc/references/contract-addresses) for the native
+and ERC-20 precision distinction.
 
-- Circle AgenticCommerce:
-  [`0x0747EEf0706327138c69792bF28Cd525089e4583`](https://testnet.arcscan.app/address/0x0747EEf0706327138c69792bF28Cd525089e4583)
-- Source-verified EvaluationRouter v3:
-  [`0x44A51C365eB3eC703534ebb56394E7015930533D`](https://testnet.arcscan.app/address/0x44A51C365eB3eC703534ebb56394E7015930533D)
-- Circle Developer-Controlled Wallet / human resolver:
-  [`0x025d2216594469E19EA70F38ef9D08E47e5dd3E7`](https://testnet.arcscan.app/address/0x025d2216594469E19EA70F38ef9D08E47e5dd3E7)
+That combination fits both sides of the hackathon: the **Agentic Economy** needs agents to contract,
+verify work, and build portable history; **DeFi** needs funds to move under transparent,
+non-discretionary rules. Arc makes the payment fast. vAPI gives the work enough time to become
+verifiable.
 
-Deployed v3 jobs are `159668` (AI completed), `159669` (injection
-escalation), and `159670` (HumanOnly escalation).
+| Arc Testnet fact | Value |
+| --- | --- |
+| Chain ID | `5042002` |
+| RPC | [`https://rpc.testnet.arc.network`](https://rpc.testnet.arc.network) |
+| Explorer | [`https://testnet.arcscan.app`](https://testnet.arcscan.app) |
+| Native gas asset | USDC (18-decimal native precision) |
+| USDC ERC-20 precompile/interface | `0x3600000000000000000000000000000000000000` (6 decimals) |
 
-Those jobs exercise the router's AI and escalation paths. A UI rehearsal also
-created and funded job `159917` and accepted a 0.25 USDC x402 payment. Its
-Telegram review expired before a verdict. The next rehearsal must confirm the
-auditor payout and escrow settlement.
+Arc's [connection guide](https://docs.arc.io/arc/references/connect-to-arc) also lists the chain and
+wallet setup details.
+
+## Arc deployment
+
+The controller replaces the complete marked block below from the canonical deployment output. Do
+not treat `PENDING_DEPLOY_*` tokens as addresses or proof.
+
+<!-- PENDING-DEPLOY:BEGIN -->
+| Contract | Arc Testnet address | Arcscan proof |
+| --- | --- | --- |
+| `EscrowFactory` | `PENDING_DEPLOY_ESCROW_FACTORY` | `PENDING_DEPLOY_ESCROW_FACTORY_EXPLORER` |
+| `EscrowV1` implementation | `PENDING_DEPLOY_ESCROW_IMPLEMENTATION` | `PENDING_DEPLOY_ESCROW_IMPLEMENTATION_EXPLORER` |
+| `DisputePanel` | `PENDING_DEPLOY_DISPUTE_PANEL` | `PENDING_DEPLOY_DISPUTE_PANEL_EXPLORER` |
+| `ArbiterRegistry` | `PENDING_DEPLOY_ARBITER_REGISTRY` | `PENDING_DEPLOY_ARBITER_REGISTRY_EXPLORER` |
+| `FeeRouter` | `PENDING_DEPLOY_FEE_ROUTER` | `PENDING_DEPLOY_FEE_ROUTER_EXPLORER` |
+| `ReputationRegistryV0` | `PENDING_DEPLOY_REPUTATION_REGISTRY` | `PENDING_DEPLOY_REPUTATION_REGISTRY_EXPLORER` |
+<!-- PENDING-DEPLOY:END -->
+
+Individual order addresses are emitted by `EscrowFactory` and are not singleton deployment rows.
 
 ## Run locally
 
+Prerequisites: Node 22, pnpm 10.27, Foundry, and a browser wallet with Arc Testnet selected.
+
 ```sh
 pnpm install
-cp .env.example .env
 
-# For discovery without live Gateway, Telegram, and Circle credentials.
-# /health stays degraded and paid execution remains disabled.
-export REVIEW_ALLOW_PARTIAL_CONFIG=true
+# Contract suite
+cd packages/escrow-contracts
+forge test
+cd ../..
 
-# Offline evaluator fixture
-pnpm -C core dry-run
-
-# Paid review API, Telegram dispatcher, and Circle transaction reconciler
-pnpm -C core review-server
-
-# Read-only operations dashboard
+# Chain-native app
+cp app/.env.example app/.env
 pnpm -C app dev
 ```
 
-Add allowlisted reviewers with:
+Fill `app/.env` with the deployed contracts before starting the app:
 
-```sh
-pnpm -C core reviewer:add \
-  --telegram-user-id 123456 \
-  --chat-id 123456 \
-  --alias "Ada" \
-  --payout-address 0x... \
-  --skills security,api
-```
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `VAPI_ESCROW_FACTORY` | yes | `EscrowFactory` address. |
+| `VAPI_DISPUTE_PANEL` | yes | `DisputePanel` address. |
+| `VAPI_ARBITER_REGISTRY` | yes | `ArbiterRegistry` address. |
+| `VAPI_FEE_ROUTER` | yes | `FeeRouter` address. |
+| `VAPI_REPUTATION_REGISTRY` | yes | `ReputationRegistryV0` address. |
+| `VAPI_DEPLOY_BLOCK` | recommended | First block to scan for marketplace events; use `0` only for local discovery. |
+| `VAPI_CHAIN_MOCK` | no | Set to `1` only for explicit local mock mode. Omit for the Arc demo. |
 
-The paid public endpoint is `POST /v1/review-orders`. Free polling, evidence,
-reviewer history, health, and OpenAPI endpoints are described by
-`GET /openapi.json`. See [core/README.md](core/README.md) for configuration.
+Arc's chain ID, public RPC, explorer, and USDC interface are pinned in the app's chain
+configuration; no signing key belongs in the app environment. Wallets sign user actions.
 
-## Repository
+## What is shipped, and what is next
 
-This stays on the same pnpm/TypeScript + React Router v7 (RRV7) stack used by
-the other vAPI repos. It is one repository and one product; Railway is
-configured to run the RRV7 dashboard, review API/worker, and AI judge as three
-services from the same source.
+The MVP ships deterministic clones, the six-state lifecycle, allowance and EIP-3009 funding,
+hash-based evidence, three-arbiter commit-reveal adjudication, a time-gated council fallback, atomic
+500 bp seller fees, and permissionless settlement attestation. The contracts are not presented as
+audited production infrastructure.
 
-- `contracts/`: EvaluationRouter v3 and 37 Foundry tests.
-- `core/`: AI judge, x402 review service, SQLite state machine, Telegram bot,
-  Circle wallet orchestration, evidence, reviewer CLI, and 108 service tests.
-- `app/`: demo console, public run records, Arc feed, paid-review
-  operations timeline, and reviewer history.
-- `adapters/arc/`: pinned Circle contract ABIs.
-- `docs/`: review model, architecture, and submission material.
+The roadmap is deliberately outside the current claim:
 
-Railway config-as-code and persistent-volume instructions live in
-[`docs/deployment/railway.md`](docs/deployment/railway.md). The hackathon
-deployment uses single-replica SQLite and does not require Supabase.
+- **Stake-weighted power:** move from today's owner-managed allowlist to stake-gated participation
+  and explicitly bounded voting power.
+- **Accuracy multipliers:** weight future assignments and rewards by long-run agreement with
+  finalized outcomes, without rewriting past votes.
+- **Slashing:** add enforceable penalties with an appeal and evidence policy before value is put at
+  risk.
+- **Dispute bonds:** the current panel reports a zero bond; future bonds can deter spam and fund
+  review without blocking legitimate claims.
+- **IPFS dossiers:** evidence is currently represented by hashes. Content-addressed dossiers can
+  make the evidence package independently retrievable.
+- **x402 funding UX:** wrap the already implemented EIP-3009 authorization leg in an agent-friendly
+  x402 request flow.
+- **ERC-8004 interoperability:** attach escrow history to portable agent identities instead of
+  creating another identity silo.
 
-The project uses Circle's ERC-8183 escrow for job settlement. Its asynchronous
-wallet handling follows patterns from
-[arc-escrow](https://github.com/circlefin/arc-escrow), x402 seller patterns from
-[arc-nanopayments](https://github.com/circlefin/arc-nanopayments), and agent
-buyer patterns from
-[Agent Stack starter kits](https://github.com/circlefin/agent-stack-starter-kits)
-without copying their alternative escrow contracts or application stacks.
+## Glossary
 
-Detailed design:
-[Paid Human Review Exchange](docs/specs/2026-07-28-paid-human-review-exchange.md).
+| Roman language | English | vAPI component |
+| --- | --- | --- |
+| **Forum** | Marketplace | **The Forum** order marketplace |
+| **Ordo** | Order | One `EscrowV1` clone |
+| **Praetores** | Arbiters | **The Praetors**, `ArbiterRegistry`, and `DisputePanel` |
+| **Consilium** | Council | Time-gated council resolver configured in every clone |
+| **Census** | Public record | **The Census** and `ReputationRegistryV0` |
+| **Aerarium** | Treasury | `FeeRouter` treasury destination |
+
+## Repository map
+
+- `packages/escrow-contracts/`: Solidity contracts, deploy scripts, and Foundry tests.
+- `app/`: React Router demo with The Forum, order detail, The Praetors, and The Census.
+- `docs/submission/`: video beat sheet and deck copy.
+- `docs/specs/`: superseded design records retained as historical context.
