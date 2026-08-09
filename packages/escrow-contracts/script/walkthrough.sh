@@ -3,6 +3,89 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RPC_URL="${RPC_URL:-http://127.0.0.1:18545}"
+
+live_send() {
+  local label="$1"
+  local receipt
+  shift
+  receipt="$(cast send --rpc-url "$RPC_URL" --json "$@")"
+  printf '%s tx=%s\n' "$label" "$(jq -r '.transactionHash' <<<"$receipt")"
+}
+
+run_live_happy_path() {
+  : "${BUYER_PK:?BUYER_PK is required for LIVE=true}"
+  : "${SELLER_PK:?SELLER_PK is required for LIVE=true}"
+
+  local deployment="${DEPLOYMENT:-$ROOT_DIR/deployments/arc-testnet.json}"
+  local factory token buyer seller escrow token_balance state escrow_balance code allowance
+  local amount="${DEMO_AMOUNT:-1000000}"
+  local work_duration="${DEMO_WORK_DURATION:-1200}"
+  local review_window="${DEMO_REVIEW_WINDOW:-180}"
+  local salt="${DEMO_SALT:-$(cast keccak "vapi-arc-live-happy-$(date +%s)")}"
+  local terms_hash="${DEMO_TERMS_HASH:-$(cast keccak "vapi-arc-live-happy-terms")}"
+
+  factory="$(jq -er '.escrowFactory' "$deployment")"
+  token="$(cast call --rpc-url "$RPC_URL" "$factory" 'paymentToken()(address)')"
+  buyer="$(cast wallet address --private-key "$BUYER_PK")"
+  seller="$(cast wallet address --private-key "$SELLER_PK")"
+  escrow="$(cast call --rpc-url "$RPC_URL" "$factory" \
+    'predictEscrow(address,bytes32)(address)' "$seller" "$salt")"
+  token_balance="$(cast call --rpc-url "$RPC_URL" "$token" \
+    'balanceOf(address)(uint256)' "$buyer")"
+  token_balance="${token_balance%% *}"
+  if (( token_balance < amount )); then
+    printf 'buyer %s has %s token units; %s required\n' "$buyer" "$token_balance" "$amount" >&2
+    return 1
+  fi
+
+  printf 'live walkthrough buyer=%s seller=%s escrow=%s amount=%s\n' \
+    "$buyer" "$seller" "$escrow" "$amount"
+  code="$(cast code --rpc-url "$RPC_URL" "$escrow")"
+  if [[ "$code" == "0x" ]]; then
+    live_send create "$factory" \
+      'createEscrow(address,address,uint256,uint64,uint64,bytes32,bytes32)(address)' \
+      "$buyer" "$token" "$amount" "$work_duration" "$review_window" "$terms_hash" "$salt" \
+      --private-key "$SELLER_PK"
+  fi
+
+  state="$(cast call --rpc-url "$RPC_URL" "$escrow" 'state()(uint8)')"
+  state="${state%% *}"
+  if [[ "$state" == "1" ]]; then
+    allowance="$(cast call --rpc-url "$RPC_URL" "$token" \
+      'allowance(address,address)(uint256)' "$buyer" "$escrow")"
+    allowance="${allowance%% *}"
+    if (( allowance < amount )); then
+      live_send approve "$token" 'approve(address,uint256)(bool)' "$escrow" "$amount" \
+        --private-key "$BUYER_PK"
+    fi
+    live_send deposit "$escrow" 'depositFunds()' --private-key "$SELLER_PK"
+    state="2"
+  fi
+  if [[ "$state" == "2" ]]; then
+    live_send submit "$escrow" 'submitDelivery(bytes32)' "$(cast keccak "live-delivery")" \
+      --private-key "$SELLER_PK"
+    state="3"
+  fi
+  if [[ "$state" == "3" ]]; then
+    live_send release "$escrow" 'releaseFunds()' --private-key "$BUYER_PK"
+  fi
+
+  state="$(cast call --rpc-url "$RPC_URL" "$escrow" 'state()(uint8)')"
+  state="${state%% *}"
+  escrow_balance="$(cast call --rpc-url "$RPC_URL" "$token" \
+    'balanceOf(address)(uint256)' "$escrow")"
+  escrow_balance="${escrow_balance%% *}"
+  test "$state" = "5"
+  test "$escrow_balance" = "0"
+  printf 'walkthrough complete: happy=%s state=%s escrowBalance=%s\n' \
+    "$escrow" "$state" "$escrow_balance"
+}
+
+if [[ "${LIVE:-false}" == "true" ]]; then
+  run_live_happy_path
+  exit
+fi
+
 MNEMONIC="test test test test test test test test test test test junk"
 ANVIL_LOG="${TMPDIR:-/tmp}/vapi-escrow-anvil.log"
 

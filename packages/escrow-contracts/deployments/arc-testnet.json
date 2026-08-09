@@ -1,5 +1,9 @@
 {
+  "arbiterRegistry": "0x4e1395F57DB8781aDdAbeaf689898f82fe6abb59",
   "chainId": 5042002,
-  "status": "not-deployed",
-  "contracts": {}
+  "disputePanel": "0x0EA143967B3470948329F0304cBBE78Ba8cd827B",
+  "escrowFactory": "0xb6546d4A7FC5B75FF04828165d17e6a4ad397Da3",
+  "escrowImplementation": "0x6A0A6fec9002A5b13AEB08F8Dd001b22739C6a5B",
+  "feeRouter": "0x2ab6ba6005b7bE5BCD30F24e8d0E5921e8e489e8",
+  "reputationRegistry": "0x3962f3e536A55F230bF8Bfa133518eb1Fe1c51e3"
 }
