@@ -22,7 +22,7 @@ import { readDisputes, type DisputeSnapshot } from "~/lib/chain-data";
 import { useWallet } from "~/lib/wallet";
 
 export const meta: Route.MetaFunction = () => [
-  { title: "Dispute queue · vAPI Praetors" },
+  { title: "Dispute reviews · vAPI on Arc" },
   {
     name: "description",
     content: "Commit, reveal, and execute three-seat escrow dispute votes on Arc.",
@@ -38,11 +38,11 @@ type SavedBallot = { vote: number; salt: Hex };
 
 const VOTE_LABELS: Record<number, string> = {
   [PanelVoteValue.RELEASE]: "Release to vendor",
-  [PanelVoteValue.REFUND]: "Refund buyer",
-  [PanelVoteValue.SPLIT]: "Split settlement",
+  [PanelVoteValue.REFUND]: "Refund the client",
+  [PanelVoteValue.SPLIT]: "Split 50-50",
 };
 
-const OUTCOME_LABELS = ["Released to vendor", "Refunded to buyer", "Split settlement"];
+const OUTCOME_LABELS = ["Released to vendor", "Refunded to client", "Split 50-50"];
 
 function randomSalt(): Hex {
   const bytes = new Uint8Array(32);
@@ -73,6 +73,7 @@ function DisputeCard({
   const inReveal = now >= dispute.commitDeadline && now < dispute.revealDeadline;
   const executable =
     !dispute.executed && (now >= dispute.revealDeadline || dispute.revealed >= 3);
+  const phaseIndex = dispute.executed ? 3 : inCommit ? 1 : inReveal ? 2 : 3;
 
   useEffect(() => {
     setStorageReady(false);
@@ -161,6 +162,19 @@ function DisputeCard({
         )}
       </header>
 
+      <ol className="phase-progress" aria-label="Dispute progress">
+        {["Evidence", "Sealed votes", "Reveal", "Executed"].map((phase, index) => (
+          <li
+            key={phase}
+            className={`${index === phaseIndex ? "phase-current" : ""} ${index < phaseIndex ? "phase-complete" : ""}`}
+            aria-current={index === phaseIndex ? "step" : undefined}
+          >
+            <span className="mono" aria-hidden="true">{index + 1}</span>
+            <strong>{phase}</strong>
+          </li>
+        ))}
+      </ol>
+
       <div className="panel-tally" aria-label="Three-seat panel tally">
         <div className="seat-visual" aria-hidden="true">
           {[0, 1, 2].map((seat) => (
@@ -192,7 +206,7 @@ function DisputeCard({
           {inCommit && (
             <section className="ballot-form">
               <div className="ballot-copy">
-                <h3>Commit a sealed vote</h3>
+                <h3>Cast your sealed vote</h3>
                 <p>
                   Your choice and random salt are hashed locally. Only the
                   commitment reaches Arc during this phase.
@@ -242,7 +256,7 @@ function DisputeCard({
           {inReveal && (
             <section className="ballot-form reveal-form">
               <div className="ballot-copy">
-                <h3>Reveal your saved vote</h3>
+                <h3>Reveal your vote</h3>
                 <p>The contract recomputes the exact packed commitment before accepting it.</p>
               </div>
               {saved ? (
@@ -316,16 +330,17 @@ export default function Arbiters() {
     <div className="arbiters-page">
       <header className="page-intro">
         <div>
-          <h1>Dispute queue</h1>
-          <p className="roman-subtitle">The Praetors · sealed votes, public settlement</p>
+          <h1>Dispute reviews</h1>
+          <p className="roman-subtitle">The Praetors — sealed votes, public settlement</p>
           <p className="page-lede">
-            Three registered arbiters commit in secret, reveal in public, and let
-            the panel contract execute the majority outcome.
+            When a client and vendor disagree, three registered reviewers examine the evidence
+            and vote. Votes are sealed first so no reviewer can copy another, then revealed in
+            public — two matching votes decide who gets the money.
           </p>
         </div>
         <div className="arbiter-identity">
           <span>Connected capacity</span>
-          <strong>{wallet.isArbiter ? "Registered arbiter" : wallet.account ? "Observer" : "Wallet not connected"}</strong>
+          <strong>{wallet.isArbiter ? "You are one of the three reviewers" : wallet.account ? "Viewing as an observer" : "Wallet not connected"}</strong>
         </div>
       </header>
       <ChainError message={snapshot.error} />
@@ -334,7 +349,7 @@ export default function Arbiters() {
         <section className="dispute-queue" aria-labelledby="queue-heading">
           <div className="section-heading">
             <div>
-              <h2 id="queue-heading">Open panel cases</h2>
+              <h2 id="queue-heading">Open disputes</h2>
               <p>Derived from panel events; refreshed every 12 seconds.</p>
             </div>
             <span className="record-count mono">{snapshot.disputes.length} cases</span>

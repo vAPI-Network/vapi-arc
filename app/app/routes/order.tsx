@@ -55,8 +55,15 @@ export async function loader({ params }: Route.LoaderArgs) {
 const RESOLUTION_LABELS: Record<number, string> = {
   [EscrowResolution.NONE]: "Pending",
   [EscrowResolution.RELEASE]: "Released to vendor",
-  [EscrowResolution.REFUND]: "Refunded to buyer",
+  [EscrowResolution.REFUND]: "Refunded to client",
   [EscrowResolution.SPLIT]: "Split settlement",
+};
+
+const RAIL_COPY: Record<number, string> = {
+  [EscrowState.CREATED]: "Client funds",
+  [EscrowState.LOCKED]: "Vendor works",
+  [EscrowState.SUBMITTED]: "Client reviews",
+  [EscrowState.RESOLVED]: "Funds settled",
 };
 
 function Step({
@@ -72,6 +79,7 @@ function Step({
     <li className={`rail-step ${current ? "rail-current" : ""} ${reached ? "rail-reached" : ""}`}>
       <span className="rail-node" aria-hidden="true" />
       <strong>{state === EscrowState.RESOLVED ? "Resolved" : state === EscrowState.SUBMITTED ? "Submitted" : state === EscrowState.LOCKED ? "Locked" : "Created"}</strong>
+      <small>{RAIL_COPY[state]}</small>
     </li>
   );
 }
@@ -97,10 +105,12 @@ function StateRail({ state }: { state: number }) {
       </ol>
       <div className="rail-branches">
         <span className={`rail-branch rail-disputed ${state === EscrowState.DISPUTED ? "rail-branch-active" : ""}`}>
-          Disputed
+          <strong>Disputed</strong>
+          <small>Arbiter panel reviews</small>
         </span>
         <span className={`rail-branch rail-expired ${state === EscrowState.EXPIRED ? "rail-branch-active" : ""}`}>
-          Expired
+          <strong>Expired</strong>
+          <small>Client did not fund</small>
         </span>
       </div>
     </div>
@@ -231,6 +241,13 @@ function OrderView({
   return (
     <div className="order-page">
       <Link className="back-link" to="/">Back to marketplace</Link>
+      <div className={`order-role-banner ${isParty ? "order-role-party" : "order-role-guest"}`}>
+        {isBuyer
+          ? "You are the client on this order"
+          : isSeller
+            ? "You are the vendor on this order"
+            : "You are viewing as a guest"}
+      </div>
       <header className="order-hero">
         <div>
           <div className="order-title-line">
@@ -240,6 +257,11 @@ function OrderView({
           <h1>{formatUsdc(order.amount)}</h1>
           <p className="roman-subtitle">A single covenant, settled by the chain</p>
           <AddressPill address={order.address} />
+          <p className="custody-note">
+            The client's USDC is locked in this order's own escrow contract — neither vAPI nor
+            the vendor can touch it. It can only be released to the vendor, refunded to the
+            client, or split between them.
+          </p>
         </div>
         {activeDeadline ? (
           <Countdown deadline={activeDeadline.value} label={activeDeadline.label} />
@@ -261,21 +283,54 @@ function OrderView({
           {isSeller && <b className="role-badge">You · Vendor</b>}
         </div>
         <div className="fact-block">
-          <span>Buyer</span>
+          <span>Client</span>
           <AddressPill address={order.buyer} />
-          {isBuyer && <b className="role-badge">You · Buyer</b>}
+          {isBuyer && <b className="role-badge">You · Client</b>}
         </div>
         <div className="fact-block fact-hash">
           <span>Terms commitment</span>
           <code>{order.termsHash}</code>
+          <small className="fact-note">
+            A tamper-proof fingerprint of the job description both sides agreed to.
+          </small>
         </div>
         {order.deliveryHash !== `0x${"0".repeat(64)}` && (
           <div className="fact-block fact-hash">
             <span>Delivery commitment</span>
             <code>{order.deliveryHash}</code>
+            <small className="fact-note">
+              A fingerprint of the work the vendor handed in, stamped on-chain at delivery.
+            </small>
           </div>
         )}
       </section>
+
+      {(order.state === EscrowState.DISPUTED || order.state === EscrowState.RESOLVED) && (
+        <section className="order-dispute-panel" aria-labelledby="order-dispute-heading">
+          <div>
+            <span>{order.disputedAt > 0 ? "Arbiter panel" : "Settlement"}</span>
+            <h2 id="order-dispute-heading">
+              {order.state === EscrowState.DISPUTED ? "Dispute under review" : "Settlement outcome"}
+            </h2>
+            <p>
+              {order.state === EscrowState.DISPUTED
+                ? "Three independent reviewers examine the evidence, cast sealed votes, and reveal them on Arc."
+                : "The final result is recorded on-chain as part of this order’s history."}
+            </p>
+          </div>
+          {order.state === EscrowState.DISPUTED ? (
+            <div className="dispute-panel-status">
+              <span>Evidence response closes</span>
+              <Countdown deadline={order.counterEvidenceDeadline} label="Counter-evidence due" compact />
+            </div>
+          ) : (
+            <div className="dispute-panel-status">
+              <span>Final result</span>
+              <strong>{RESOLUTION_LABELS[order.resolution]}</strong>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="actions-section" aria-labelledby="actions-heading">
         <div className="section-heading actions-heading">
@@ -284,14 +339,24 @@ function OrderView({
             <p>Only actions valid for this state and connected actor are shown.</p>
           </div>
           {!wallet.account && <span className="action-context">Connect a wallet to act</span>}
-          {wallet.account && !isParty && <span className="action-context">Observer account</span>}
+          {wallet.account && !isParty && <span className="action-context">Viewing as a guest</span>}
         </div>
 
         <div className="action-layout">
+          {isParty && (
+            <section className="action-group" aria-labelledby="role-actions-heading">
+              <div className="action-group-heading">
+                <h3 id="role-actions-heading">{isBuyer ? "Client actions" : "Vendor actions"}</h3>
+                <p>
+                  {isBuyer
+                    ? "Fund the order, review delivery, or ask the panel to step in."
+                    : "Deliver the work, return funds, or ask the panel to step in."}
+                </p>
+              </div>
           {isBuyer && order.state === EscrowState.CREATED && (
             <article className="action-module funding-module">
               <div className="action-copy">
-                <span className="action-kicker">Buyer · funding</span>
+                <span className="action-kicker">Client · funding</span>
                 <h3>Lock {formatUsdc(order.amount)}</h3>
                 <p>
                   Approve the USDC precompile first, then let the escrow pull the
@@ -314,6 +379,7 @@ function OrderView({
                     >
                       Approve exact amount
                     </TxButton>
+                    <p className="action-helper">Allow this escrow to transfer the exact USDC amount.</p>
                   </div>
                 </li>
                 <li>
@@ -327,6 +393,7 @@ function OrderView({
                     >
                       Fund order
                     </TxButton>
+                    <p className="action-helper">Move the client’s USDC into escrow so work can begin.</p>
                   </div>
                 </li>
               </ol>
@@ -349,28 +416,34 @@ function OrderView({
                   placeholder="Paste the final delivery record or content-addressed reference."
                 />
               </label>
-              <HashField value={deliveryHash} label="Delivery hash" />
-              <TxButton
-                config={config}
-                execute={() => write("submitDelivery", [deliveryHash])}
-                disabled={!delivery.trim()}
-                onConfirmed={refresh}
-              >
-                Submit delivery
-              </TxButton>
+              <div className="action-cta">
+                <HashField value={deliveryHash} label="Delivery hash" />
+                <TxButton
+                  config={config}
+                  execute={() => write("submitDelivery", [deliveryHash])}
+                  disabled={!delivery.trim()}
+                  onConfirmed={refresh}
+                >
+                  Submit delivery
+                </TxButton>
+                <p className="action-helper">Send the delivery proof for client review.</p>
+              </div>
             </article>
           )}
 
           {isBuyer && order.state === EscrowState.SUBMITTED && (
             <article className="action-module decisive-module">
               <div className="action-copy">
-                <span className="action-kicker">Buyer · acceptance</span>
+                <span className="action-kicker">Client · acceptance</span>
                 <h3>Accept the delivery</h3>
                 <p>Release the escrowed amount to the vendor, less the protocol fee.</p>
               </div>
-              <TxButton config={config} execute={() => write("releaseFunds")} onConfirmed={refresh}>
-                Release funds
-              </TxButton>
+              <div className="action-cta">
+                <TxButton config={config} execute={() => write("releaseFunds")} onConfirmed={refresh}>
+                  Release funds
+                </TxButton>
+                <p className="action-helper">Approve the delivery and pay the vendor.</p>
+              </div>
             </article>
           )}
 
@@ -380,11 +453,14 @@ function OrderView({
                 <div className="action-copy">
                   <span className="action-kicker">Vendor · concession</span>
                   <h3>Return the escrow</h3>
-                  <p>Refund the full locked amount to the buyer.</p>
+                  <p>Refund the full locked amount to the client.</p>
                 </div>
-                <TxButton config={config} execute={() => write("refundBuyer")} onConfirmed={refresh}>
-                  Refund buyer
-                </TxButton>
+                <div className="action-cta">
+                  <TxButton config={config} execute={() => write("refundBuyer")} onConfirmed={refresh}>
+                    Refund client
+                  </TxButton>
+                  <p className="action-helper">Return the escrowed USDC to the client.</p>
+                </div>
               </article>
             )}
 
@@ -392,9 +468,9 @@ function OrderView({
             (order.state === EscrowState.LOCKED || order.state === EscrowState.SUBMITTED) && (
               <article className="action-module dispute-module">
                 <div className="action-copy">
-                  <span className="action-kicker">Buyer or vendor · dispute</span>
+                  <span className="action-kicker">Client or vendor · dispute</span>
                   <h3>Raise a dispute</h3>
-                  <p>Commit evidence for a three-seat independent panel to resolve.</p>
+                  <p>Commit evidence for the independent arbiter panel to review.</p>
                 </div>
                 <label className="field">
                   <span>Evidence text</span>
@@ -405,15 +481,18 @@ function OrderView({
                     placeholder="State the claim and include content-addressed evidence references."
                   />
                 </label>
-                <HashField value={evidenceHash} label="Evidence hash" />
-                <TxButton
-                  config={config}
-                  execute={() => write("raiseDispute", [evidenceHash])}
-                  disabled={!evidence.trim()}
-                  onConfirmed={refresh}
-                >
-                  Raise dispute
-                </TxButton>
+                <div className="action-cta">
+                  <HashField value={evidenceHash} label="Evidence hash" />
+                  <TxButton
+                    config={config}
+                    execute={() => write("raiseDispute", [evidenceHash])}
+                    disabled={!evidence.trim()}
+                    onConfirmed={refresh}
+                  >
+                    Raise dispute
+                  </TxButton>
+                  <p className="action-helper">Send this order to the 3-reviewer panel.</p>
+                </div>
               </article>
             )}
 
@@ -433,16 +512,21 @@ function OrderView({
                   placeholder="Answer the claim with verifiable references."
                 />
               </label>
-              <HashField value={counterHash} label="Counter-evidence hash" />
-              <TxButton
-                config={config}
-                execute={() => write("submitCounterEvidence", [counterHash])}
-                disabled={!counterEvidence.trim()}
-                onConfirmed={refresh}
-              >
-                Submit counter-evidence
-              </TxButton>
+              <div className="action-cta">
+                <HashField value={counterHash} label="Counter-evidence hash" />
+                <TxButton
+                  config={config}
+                  execute={() => write("submitCounterEvidence", [counterHash])}
+                  disabled={!counterEvidence.trim()}
+                  onConfirmed={refresh}
+                >
+                  Submit counter-evidence
+                </TxButton>
+                <p className="action-helper">Answer the claim before the reviewer deadline.</p>
+              </div>
             </article>
+          )}
+            </section>
           )}
 
           {order.state === EscrowState.LOCKED && now > order.workDeadline && (
@@ -450,11 +534,14 @@ function OrderView({
               <div className="action-copy">
                 <span className="action-kicker">Permissionless · timeout</span>
                 <h3>Delivery window elapsed</h3>
-                <p>Anyone can return the escrow to the buyer.</p>
+                <p>Anyone can return the escrow to the client.</p>
               </div>
-              <TxButton config={config} execute={() => write("timeoutRefund")} onConfirmed={refresh}>
-                Timeout refund
-              </TxButton>
+              <div className="action-cta">
+                <TxButton config={config} execute={() => write("timeoutRefund")} onConfirmed={refresh}>
+                  Timeout refund
+                </TxButton>
+                <p className="action-helper">Reclaim funds — the vendor missed the deadline.</p>
+              </div>
             </article>
           )}
 
@@ -465,9 +552,12 @@ function OrderView({
                 <h3>Review window elapsed</h3>
                 <p>Anyone can release the order to the vendor.</p>
               </div>
-              <TxButton config={config} execute={() => write("finalize")} onConfirmed={refresh}>
-                Finalize order
-              </TxButton>
+              <div className="action-cta">
+                <TxButton config={config} execute={() => write("finalize")} onConfirmed={refresh}>
+                  Finalize order
+                </TxButton>
+                <p className="action-helper">Release funds — the client review window has closed.</p>
+              </div>
             </article>
           )}
         </div>

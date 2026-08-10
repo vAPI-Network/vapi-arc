@@ -17,7 +17,7 @@ import { readReputation } from "~/lib/chain-data";
 import { useWallet } from "~/lib/wallet";
 
 export const meta: Route.MetaFunction = () => [
-  { title: "Reputation ledger · vAPI Census" },
+  { title: "Reputation · vAPI on Arc" },
   {
     name: "description",
     content: "Search settlement reputation and attest resolved escrows on Arc Testnet.",
@@ -62,11 +62,12 @@ export default function Reputation() {
     <div className="reputation-page">
       <header className="page-intro census-intro">
         <div>
-          <h1>Settlement reputation</h1>
-          <p className="roman-subtitle">The Census · count only what the chain can prove</p>
+          <h1>Reputation</h1>
+          <p className="roman-subtitle">The Census — count only what the chain can prove</p>
           <p className="page-lede">
-            Every score is a direct registry read. Every ledger row is a
-            permissionless attestation of a resolved factory escrow.
+            A work history that cannot be embellished: every number is counted from
+            settled escrows on Arc, and every ledger row links to the transaction
+            that proves it.
           </p>
         </div>
       </header>
@@ -74,7 +75,7 @@ export default function Reputation() {
       <section className="search-band" aria-labelledby="search-heading">
         <div>
           <h2 id="search-heading">Search a wallet</h2>
-          <p>Buyer and vendor outcomes accrue to the same portable address.</p>
+          <p>Client and vendor outcomes accrue to the same portable address.</p>
         </div>
         <Form method="get" className="wallet-search">
           <label className="sr-only" htmlFor="reputation-address">Wallet address</label>
@@ -111,7 +112,7 @@ export default function Reputation() {
         </EmptyState>
       ) : !subject ? (
         <EmptyState title="Search the settlement ledger">
-          <p>Enter any buyer or vendor wallet to read its five on-chain counters.</p>
+          <p>Enter any client or vendor wallet to read its five on-chain counters.</p>
         </EmptyState>
       ) : (
         <>
@@ -125,9 +126,9 @@ export default function Reputation() {
             </div>
             <div className="score-grid">
               {[
-                ["Settled", snapshot.score?.settled ?? 0],
-                ["Released", snapshot.score?.released ?? 0],
-                ["Refunded", snapshot.score?.refunded ?? 0],
+                ["Jobs settled", snapshot.score?.settled ?? 0],
+                ["Released to vendor", snapshot.score?.released ?? 0],
+                ["Refunded to client", snapshot.score?.refunded ?? 0],
                 ["Disputed", snapshot.score?.disputed ?? 0],
                 ["Splits", snapshot.score?.splits ?? 0],
               ].map(([label, score]) => (
@@ -196,7 +197,7 @@ export default function Reputation() {
                     <tr>
                       <th>Settlement</th>
                       <th>Vendor</th>
-                      <th>Buyer</th>
+                      <th>Client</th>
                       <th>Block</th>
                       <th>Proof</th>
                     </tr>

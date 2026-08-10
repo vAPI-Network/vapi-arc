@@ -78,8 +78,8 @@ function WalletControl() {
     <div className="wallet-control">
       <div className="wallet-identity">
         <AddressPill address={wallet.account!} />
-        <span className="role-badge">Actor</span>
-        {wallet.isArbiter && <span className="role-badge role-arbiter">Praetor</span>}
+        <span className="role-badge">Wallet</span>
+        {wallet.isArbiter && <span className="role-badge role-arbiter">Reviewer</span>}
       </div>
       <div className="wallet-actions">
         {wrongChain && (
@@ -118,13 +118,13 @@ function Header() {
         </NavLink>
         <nav aria-label="Primary navigation" className="primary-nav">
           <NavLink to="/" end className={navClass}>
-            The Forum
+            Marketplace
           </NavLink>
           <NavLink to="/arbiters" className={navClass}>
-            The Praetors
+            Disputes
           </NavLink>
           <NavLink to="/reputation" className={navClass}>
-            The Census
+            Reputation
           </NavLink>
         </nav>
         <WalletControl />
@@ -194,7 +194,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       <h1 id="error-title">{title}</h1>
       <p>{detail}</p>
       <NavLink to="/" className="action-button">
-        Return to The Forum
+        Back to the marketplace
       </NavLink>
     </section>
   );
