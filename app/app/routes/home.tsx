@@ -22,7 +22,7 @@ import {
   formatUsdc,
   usePolling,
 } from "~/components/chain-ui";
-import { escrowFactoryAbi } from "~/lib/abi/escrow-v1";
+import { EscrowState, escrowFactoryAbi } from "~/lib/abi/escrow-v1";
 import { CHAIN_POLL_INTERVAL_MS, getServerChainConfig } from "~/lib/chains";
 import { readMarketplace } from "~/lib/chain-data";
 import { useWallet } from "~/lib/wallet";
@@ -39,6 +39,15 @@ export async function loader() {
   const config = getServerChainConfig();
   return { config, snapshot: await readMarketplace(config) };
 }
+
+const ORDER_STATUS: Record<number, string> = {
+  [EscrowState.CREATED]: "Offer open — waiting for the client to fund",
+  [EscrowState.LOCKED]: "Funded — vendor is working",
+  [EscrowState.SUBMITTED]: "Delivered — waiting for client review",
+  [EscrowState.DISPUTED]: "In dispute — the arbiter panel is voting",
+  [EscrowState.RESOLVED]: "Completed — funds settled",
+  [EscrowState.EXPIRED]: "Offer expired",
+};
 
 function randomSalt(): Hex {
   const bytes = new Uint8Array(32);
@@ -73,7 +82,7 @@ export default function Marketplace() {
 
   const createEscrow = () => {
     if (!factory || !wallet.account || !isAddress(buyer)) {
-      throw new Error("Connect a vendor wallet and enter a valid buyer address.");
+      throw new Error("Connect a vendor wallet and enter a valid client address.");
     }
     return wallet.writeContract({
       address: factory,
@@ -96,10 +105,10 @@ export default function Marketplace() {
       <header className="page-intro marketplace-intro">
         <div>
           <h1>Work marketplace</h1>
-          <p className="roman-subtitle">The Forum · every agreement begins in public</p>
+          <p className="roman-subtitle">The Forum — every agreement begins in public</p>
           <p className="page-lede">
-            Direct USDC escrows between buyers and vendors, enumerated from the
-            factory and verified against each clone.
+            Hire with confidence: clients fund the escrow, vendors deliver the
+            work, and every settlement is verified on Arc.
           </p>
         </div>
         <div className="chain-pulse" aria-label="Live Arc Testnet data">
@@ -113,6 +122,15 @@ export default function Marketplace() {
         </div>
       </header>
 
+      <section className="how-it-works" aria-labelledby="how-it-works-heading">
+        <h2 id="how-it-works-heading">How it works</h2>
+        <ol>
+          <li><span className="mono">1</span><strong>Client funds a USDC escrow</strong></li>
+          <li><span className="mono">2</span><strong>Vendor delivers the work</strong></li>
+          <li><span className="mono">3</span><strong>Funds release automatically — disputes go to a 3-reviewer panel</strong></li>
+        </ol>
+      </section>
+
       <ChainError message={snapshot.error} />
 
       <section className="market-grid" aria-labelledby="open-escrows-heading">
@@ -120,7 +138,10 @@ export default function Marketplace() {
           <div className="section-heading">
             <div>
               <h2 id="open-escrows-heading">Escrows on Arc</h2>
-              <p>State rechecked every 12 seconds through one multicall.</p>
+              <p>
+                Each order is its own escrow contract on Arc — funds never sit with a platform
+                wallet. State rechecked every 12 seconds.
+              </p>
             </div>
             <span className="record-count mono">
               {snapshot.orders.length} {snapshot.orders.length === 1 ? "order" : "orders"}
@@ -151,6 +172,9 @@ export default function Marketplace() {
                       <span className="block-mark mono">#{order.blockNumber}</span>
                     </span>
                     <strong className="order-amount">{formatUsdc(order.amount)}</strong>
+                    <span className="order-status">
+                      {ORDER_STATUS[order.state] ?? "Order status unavailable"}
+                    </span>
                     <span className="order-address mono">
                       {order.address.slice(0, 10)}…{order.address.slice(-6)}
                     </span>
@@ -158,16 +182,18 @@ export default function Marketplace() {
                   <div className="order-parties">
                     <AddressPill address={order.seller} label="Vendor" />
                     <span className="party-arrow" aria-hidden="true" />
-                    <AddressPill address={order.buyer} label="Buyer" />
+                    <AddressPill address={order.buyer} label="Client" />
                   </div>
-                  <div className="order-row-deadline">
-                    <span>Offer window</span>
-                    <Countdown
-                      deadline={order.offerDeadline}
-                      label="Offer window"
-                      compact
-                    />
-                  </div>
+                  {order.state === EscrowState.CREATED && (
+                    <div className="order-row-deadline">
+                      <span>Offer window</span>
+                      <Countdown
+                        deadline={order.offerDeadline}
+                        label="Offer window"
+                        compact
+                      />
+                    </div>
+                  )}
                   <Link className="row-link" to={`/orders/${order.address}`}>
                     Inspect order
                   </Link>
@@ -187,7 +213,7 @@ export default function Marketplace() {
           </div>
           <div className="form-stack">
             <label className="field">
-              <span>Buyer address</span>
+              <span>Client address</span>
               <input
                 value={buyer}
                 onChange={(event) => setBuyer(event.target.value)}
@@ -223,7 +249,7 @@ export default function Marketplace() {
               </label>
             </div>
             <label className="field">
-              <span>Buyer review window</span>
+              <span>Client review window</span>
               <div className="input-affix">
                 <input
                   type="number"
