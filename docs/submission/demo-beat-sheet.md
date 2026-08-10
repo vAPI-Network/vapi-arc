@@ -1,112 +1,71 @@
-# vAPI Work + Verify on Arc — three-minute demo beat sheet
+# vAPI Work + Verify on Arc: three-minute demo beat sheet
+
+**Live app:** <https://vapi-web-production.up.railway.app> · **Arc explorer:** <https://testnet.arcscan.app> · **Public repo:** <https://github.com/vAPI-Network/vapi-arc>
 
 ## Before recording
 
-- Use two funded party wallets (seller and buyer), three allowlisted arbiter wallets, and one
-  permissionless executor wallet. Label every account in the wallet UI before recording.
-- Pre-fill the happy-path form, then use that same order continuously from create at 0:30 through
-  release at 1:40. Record that order end-to-end once, then remove only wallet-confirmation and
-  receipt-loading dead air; keep the order address visible across every cut. Pre-stage separate
-  dispute orders at each required phase. Evidence, commit, and reveal windows are real contract
-  windows (at least 60 seconds each), so the 50-second dispute encore is an edited sequence of
-  already-confirmed Arc transactions—not a claim that the clocks were bypassed.
-- For the commit-stage order, verify off-screen that `commitStart` has passed; the current Praetors
-  phase card exposes the commit deadline, not the evidence-window start.
-- Open the pre-staged dispute receipts in advance; open the newly created happy-path receipts as they
-  confirm. Replace every `PENDING_DEMO_*` token below after the final rehearsal.
+- Use one funded vendor wallet, one funded client wallet, three registered reviewer wallets, and one executor wallet. Label each account in the wallet UI.
+- Pre-fill the happy-path form. Use the same order from creation at 0:30 through release at 1:40. Record the order once from start to finish, then cut only wallet confirmation and receipt-loading pauses. Keep the order address visible across cuts.
+- Pre-stage separate disputed orders for the evidence, commit, and reveal phases. Each on-chain window lasts at least 60 seconds. The 50-second dispute sequence therefore uses already-confirmed Arc transactions and does not imply that anyone bypassed the clocks.
+- For the commit-stage order, confirm off-screen that `commitStart` has passed. The Disputes phase card shows the commit deadline, not the start of the evidence window.
+- Open the pre-staged dispute receipts before recording. Open the happy-path receipts as they confirm.
 
-## 0:00–0:30 — The problem
+## 0:00–0:30: The problem
 
-**On screen:** The Forum landing view. Start wide on the marketplace, then point to the order amount,
-work deadline, review window, and connected Arc Testnet badge.
+**On screen:** Open Marketplace (The Forum). Start with the job briefs, then point to an offer's USDC amount, work deadline, review window, and connected Arc Testnet badge.
 
-**Active wallet:** None; disconnected overview.
+**Active wallet:** None. Show the public, disconnected view.
 
 **Say:**
 
-> “Arc can settle USDC in under a second. But real work cannot be verified in under a second. A
-> deliverable can be late, subjective, or disputed—and neither party should have to trust a platform
-> wallet. vAPI Work + Verify is the missing trust layer: one on-chain escrow per order, explicit
-> timeouts, commit-reveal arbitration, and reputation built from settled results.”
+> “Arc can settle USDC in under a second. Real work still takes time to deliver and review. vAPI Work + Verify gives each order its own on-chain escrow, clear deadlines, commit-reveal disputes, and reputation based on settled results. A platform wallet never holds the client's money.”
 
-**Proof point:** Every Forum order exposes its current contract state; the Order detail rail shows
-the happy path plus the `DISPUTED` and `EXPIRED` branches.
+**Proof:** Each Marketplace card shows a readable brief and contract state. Order detail shows the happy path and the `DISPUTED` and `EXPIRED` branches.
 
-## 0:30–1:10 — Create and fund on Arc
+## 0:30–1:10: Create and fund on Arc
 
-**On screen:** In The Forum, create a small order as the seller. Show buyer, USDC amount, terms hash,
-work duration, and review window. Submit, open the new Order detail view, switch wallets, approve
-USDC, and fund. Show the state change from `CREATED` to `LOCKED` and open the creation/funding
-receipts in Arcscan. Use tight cuts for wallet-confirmation and loading dead air while keeping the
-same order address visible.
+**On screen:** In Marketplace, create a small offer as the vendor. Show the client address, USDC amount, terms hash, readable job brief, work duration, and review window. Submit it and open Order detail. Switch to the client wallet, approve USDC, and fund the order. Show `CREATED` changing to `LOCKED`, then open the creation and funding receipts in Arcscan. Keep the same order address visible through the cuts.
 
-**Active wallet:** Seller for `createEscrow`; then buyer for USDC approval and `depositFunds`.
+**Active wallet:** Vendor for `createEscrow`; client for USDC approval and `depositFunds`.
 
 **Say:**
 
-> “The seller creates an offer. The factory gives it a deterministic EIP-1167 escrow clone with one
-> buyer, one amount, and one terms hash. Now I switch to the buyer. Funding moves the exact USDC
-> amount into that clone and starts the work clock. The app is preparing wallet transactions; the
-> chain is the backend. Here are the successful Arc receipts and the clone's `LOCKED` state.”
+> “The vendor creates an offer for this client. The factory gives the order a deterministic EIP-1167 escrow clone with one client, one amount, and one terms hash. Funding moves the exact USDC amount from the client into that clone and starts the work clock. The app prepares wallet transactions, and Arc stores the state. These receipts show the clone in `LOCKED`.”
 
-**Proof points:** `PENDING_DEMO_CREATE_TX`, `PENDING_DEMO_FUND_TX`,
-`PENDING_DEMO_HAPPY_ESCROW`.
+**Proof:** Open the successful `createEscrow` and `depositFunds` receipts, then match their order address to Order detail.
 
-## 1:10–1:40 — Deliver, release, and inspect the fee split
+## 1:10–1:40: Deliver, release, and inspect the fee split
 
-**On screen:** Continue with the same order funded in the previous beat. Switch to the seller and
-submit a delivery hash. Switch to the buyer and release. Show `SUBMITTED` becoming
-`RESOLVED / RELEASE`, then open the settlement transaction in Arcscan and point to the `Resolved`
-and `FeeSplit` events/transfers.
+**On screen:** Continue with the funded order. Switch to the vendor and submit a delivery hash. Switch to the client and release. Show `SUBMITTED` changing to `RESOLVED / RELEASE`, then open the settlement transaction in Arcscan and point to the `Resolved` and `FeeSplit` events or transfers.
 
-**Active wallet:** Seller for `submitDelivery`; then buyer for `releaseFunds`.
+**Active wallet:** Vendor for `submitDelivery`; client for `releaseFunds`.
 
 **Say:**
 
-> “The seller commits the delivery hash on-chain, which starts the buyer's review window. The buyer
-> accepts and releases immediately. In this single Arc transaction the escrow resolves, FeeRouter
-> pays 95 percent of the seller gross to the seller, and routes 5 percent—500 basis points—to the
-> treasury. A full refund would be fee-free. There is no second settlement job to trust.”
+> “The vendor stores the delivery hash on-chain, which starts the client's review window. The client accepts and releases immediately. In one Arc transaction, the escrow resolves, `FeeRouter` pays 95 percent of the vendor's gross payout to the vendor, and sends 5 percent, or 500 basis points, to the treasury. A full refund has no fee.”
 
-**Proof point:** `PENDING_DEMO_RELEASE_TX` with the seller-net and treasury-fee transfers visible.
+**Proof:** Show the vendor net and treasury fee in the same settlement receipt.
 
-## 1:40–2:30 — Dispute encore: commit, reveal, execute
+## 1:40–2:30: Commit, reveal, and execute a dispute
 
-**On screen:** Start on the pre-staged `raiseDispute` receipt in Arcscan and point to the emitted
-evidence hash. Cut to the same case in The Praetors and show its phase clock and tally. In a tight
-montage, show all three arbiter commit receipts, then all three reveal receipts. Finish on
-permissionless `execute`, the resulting `RESOLVED` state, and the payout events. Keep a phase label
-on screen so editing cannot be mistaken for bypassing time.
+**On screen:** Start on a pre-staged `raiseDispute` receipt in Arcscan and point to its evidence hash. Open the same case in Disputes (The Praetors) and show the phase clock and tally. Show all three reviewer commit receipts, then all three reveal receipts. Finish with permissionless `execute`, the resulting `RESOLVED` state, and the payout events. Keep the phase label visible so the edit cannot look like a clock bypass.
 
-**Active wallet:** Arbiter 1, Arbiter 2, Arbiter 3 for their own commits; the same three wallets for
-their reveals; executor wallet for `execute` (any account may execute).
+**Active wallet:** Reviewer 1, Reviewer 2, and Reviewer 3 for their own commits and reveals; any wallet for `execute`.
 
 **Say:**
 
-> “For the encore, either party can raise a dispute. During the evidence window the counterparty can
-> add one evidence hash. Then our three allowlisted arbiters commit sealed votes. In the next window
-> they reveal those votes, so nobody can copy an earlier choice. Two release votes release; two
-> refund votes refund; every other executable tally splits. Anyone can execute after three reveals
-> or after the reveal deadline. The panel calls the escrow's fixed outcome enum—it cannot invent a
-> recipient. These cuts use pre-staged orders because the on-chain windows are real.”
+> “The client or vendor can open a dispute. During the evidence window, the other party can add one evidence hash. Three registered reviewers then commit sealed votes. They reveal those votes in the next window, so a reviewer cannot copy an earlier choice. Two release votes release. Two refund votes refund. Every other executable tally splits. Anyone can execute after three reveals or after the reveal deadline. The panel sends a fixed outcome enum to the escrow and cannot invent a recipient. We pre-staged these orders because the on-chain windows are real.”
 
-**Proof points:** `PENDING_DEMO_DISPUTE_TX`, `PENDING_DEMO_COMMIT_TX_1..3`,
-`PENDING_DEMO_REVEAL_TX_1..3`, `PENDING_DEMO_EXECUTE_TX`.
+**Proof:** Show the dispute evidence, three commits, three reveals, execution, and selected `RELEASE`, `REFUND`, or `SPLIT` outcome for one order.
 
-## 2:30–3:00 — Trust score, roadmap, close
+## 2:30–3:00: Reputation, roadmap, and close
 
-**On screen:** Open The Census for the seller, trigger or show the permissionless attestation, and
-highlight the raw settled/released/refunded/disputed/splits counters. End on a single roadmap card
-and the Arcscan-linked deployment table.
+**On screen:** Open Reputation (The Census) for the vendor. Trigger or show the permissionless attestation and point to the settled, released, refunded, disputed, and split counters. End on the live deployment table with Arcscan links.
 
-**Active wallet:** Any wallet for `attest`; then none for the read-only close.
+**Active wallet:** Any wallet for `attest`; no wallet action for the final read-only screen.
 
 **Say:**
 
-> “After settlement, anyone can attest this registered escrow once. The Census reads raw on-chain
-> counters for both parties—no opaque score and no invented reputation. Next come stake-weighted
-> panels, accuracy multipliers, slashing and bonds, retrievable IPFS dossiers, x402 around the
-> existing EIP-3009 funding leg, and ERC-8004 identity interoperability. Arc makes money final fast.
-> vAPI makes work verifiable before that money moves.”
+> “After settlement, anyone can attest this registered escrow once. Reputation reads raw on-chain counters for both parties. Next we can add stake-weighted panels, reviewer accuracy, slashing and bonds, retrievable IPFS dossiers, x402 around the existing EIP-3009 funding path, and ERC-8004 identity support. The deployed app and every contract address are public now.”
 
-**Proof points:** `PENDING_DEMO_ATTEST_TX`, `PENDING_DEMO_CENSUS_ADDRESS`.
+**Proof:** Show the updated reputation counters, then open the [`EscrowFactory`](https://testnet.arcscan.app/address/0xb6546d4A7FC5B75FF04828165d17e6a4ad397Da3) from the deployment table.

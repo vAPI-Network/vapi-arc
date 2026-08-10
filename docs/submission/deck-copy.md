@@ -1,142 +1,135 @@
-# vAPI Work + Verify on Arc — deck copy
+# vAPI Work + Verify on Arc: final deck copy
 
-## Slide 1 — Money is instant. Work is not.
+This copy accompanies the final white presentation deck.
+
+**Live app:** <https://vapi-web-production.up.railway.app> · **Arc explorer:** <https://testnet.arcscan.app> · **Public repo:** <https://github.com/vAPI-Network/vapi-arc>
+
+## Slide 1: Arc settles money fast. Work still needs review.
 
 **vAPI Work + Verify on Arc**
 
-Non-custodial USDC escrow, commit-reveal verification, and on-chain reputation for real work.
+A non-custodial USDC work marketplace where humans and AI agents hire each other.
 
-**Speaker line:** “Arc closes the payment leg in under a second. We make sure the work leg deserves
-to close.”
+**Speaker line:** “Arc closes the payment leg in under a second. vAPI gives the work time to be delivered, reviewed, and settled.”
 
-## Slide 2 — The missing trust layer
+## Slide 2: Rules for work between strangers
 
-Web2 marketplaces did not win by adding a payment button. They added:
+A work marketplace needs more than a payment button. It needs:
 
-- escrow between strangers;
-- deadlines and acceptance rules;
-- dispute resolution;
-- reputation that compounds across transactions.
+- escrow between a client and vendor;
+- work and review deadlines;
+- fixed acceptance, refund, and timeout rules;
+- dispute review;
+- reputation based on settled orders.
 
-Agentic commerce needs the same trust layer without reinstalling a platform custodian.
+vAPI puts those rules on-chain without asking a platform operator to hold the client's money.
 
-**Speaker line:** “Fast rails solve settlement latency. They do not solve whether the logo was
-delivered, the dataset matched the brief, or the buyer vanished after receiving the work.”
+**Speaker line:** “Fast payment does not tell us whether the logo was delivered, the dataset matched the brief, or the client stopped responding after receiving the work.”
 
-## Slide 3 — What we built
+## Slide 3: What we built
 
-- `EscrowFactory` + deterministic EIP-1167 `EscrowV1` clones
-- six-state order lifecycle with permissionless timeouts
-- current three-seed, allowlisted commit-reveal panel with a fixed two-vote threshold
-- time-gated council liveness fallback with only three legal outcomes
-- atomic 500 bp fee on seller-bound payouts
+- `EscrowFactory` with deterministic EIP-1167 `EscrowV1` clones
+- a six-state order lifecycle with permissionless timeouts
+- a three-reviewer commit-reveal panel with a fixed two-vote threshold
+- a time-gated council fallback limited to three settlement outcomes
+- a 500 bp fee on vendor payouts, transferred atomically
 - permissionless, one-time settlement attestation
-- four chain-native views: **The Forum**, Order detail, **The Praetors**, **The Census**
+- 50 Foundry tests
+- four English-first views: **Marketplace** (The Forum), **Order detail**, **Disputes** (The Praetors), and **Reputation** (The Census)
+- readable job briefs, role-specific actions, and plain-language transaction receipts
 
-**Honest boundary:** hashes are on-chain; full evidence retrieval, economic security, and portable
-identity are roadmap. The contracts are not presented as audited production infrastructure.
+Hashes are on-chain. Full evidence retrieval, economic reviewer security, and portable identity remain on the roadmap. The contracts have not had an independent production audit.
 
-## Slide 4 — Six states. No ambiguous limbo.
+## Slide 4: Six states with explicit exits
 
 `CREATED → LOCKED → SUBMITTED → RESOLVED`
 
 Branches:
 
-- unfunded offer after deadline → `EXPIRED`
-- either party from `LOCKED` or `SUBMITTED` → `DISPUTED`
-- missed work deadline → buyer refund
-- unchallenged submitted delivery after review deadline → seller release
-- seller can voluntarily refund; buyer can explicitly release
+- an unfunded offer passes its deadline → `EXPIRED`
+- either party disputes a `LOCKED` or `SUBMITTED` order → `DISPUTED`
+- a missed work deadline → client refund
+- an unchallenged delivery passes its review deadline → vendor payout
+- the vendor can refund early; the client can release early
 
-**Silence = consent, symmetrically:** seller silence after the work deadline consents to refund;
-buyer silence after the review deadline consents to release.
+Vendor silence after the work deadline permits a refund. Client silence after the review deadline permits a release. Anyone can call either timeout function when it becomes available.
 
-## Slide 5 — A panel that cannot name itself as payee
+## Slide 5: Reviewers choose an outcome, never a payee
 
-1. Either party raises a dispute with an evidence hash.
-2. The counterparty gets an evidence window.
-3. The three seeded, allowlisted arbiters commit sealed votes.
+1. The client or vendor raises a dispute with an evidence hash.
+2. The other party gets an evidence window for one counter-evidence hash.
+3. Three registered reviewers commit sealed votes.
 4. They reveal `RELEASE`, `REFUND`, or `SPLIT` in the next window.
-5. In that three-arbiter deployment, a ≥2/3 majority—two release or two refund votes—selects that outcome; every other executable tally splits.
-6. Anyone executes after three reveals, or after the reveal deadline.
+5. In this three-reviewer deployment, two release votes choose `RELEASE` and two refund votes choose `REFUND`. Every other executable tally chooses `SPLIT`.
+6. Anyone can execute after three reveals, or after the reveal deadline.
 
-After the deadlock timeout, the council can choose the same three outcomes. Neither panel nor council
-can nominate an arbitrary payout address. That is a structural constraint, not a claim that the
-current governance is decentralized. The registry owner can change the allowlist; the contract's
-outcome threshold remains two, so “≥2/3” is a claim about the deployed three-arbiter configuration.
+After the deadlock timeout, the council can choose the same three outcomes. The panel and council cannot supply a payout address. `ArbiterRegistry` still has an owner-managed allowlist. The fixed outcome threshold remains two if that owner adds reviewers. The ≥2/3 description applies only to the deployed three-reviewer configuration.
 
-## Slide 6 — Why Arc
+## Slide 6: Why Arc
 
-**One asset, one transaction model**
+**One asset for gas and escrow**
 
 - USDC is the native gas asset and the escrowed ERC-20 balance.
 - ERC-20 precompile/interface: `0x3600000000000000000000000000000000000000`.
 - Confirmed transactions have sub-second deterministic finality.
-- EVM compatibility keeps contracts and wallet flows legible.
+- EVM compatibility supports familiar contracts and wallet flows.
 
 **Track fit**
 
-- **Agentic Economy:** agents can contract, verify outcomes, and accumulate settlement history.
-- **DeFi:** escrow and payout move under transparent contract rules, not operator discretion.
+- **Agentic Economy:** humans and agents can contract, review outcomes, and build settlement history.
+- **DeFi:** escrow and payout follow public contract rules instead of operator discretion.
 
-Sources: [Arc connection details](https://docs.arc.io/arc/references/connect-to-arc),
-[USDC contract reference](https://docs.arc.io/arc/references/contract-addresses), and
-[deterministic finality](https://docs.arc.io/arc/concepts/deterministic-finality).
+Sources: [Arc connection details](https://docs.arc.io/arc/references/connect-to-arc), [USDC contract reference](https://docs.arc.io/arc/references/contract-addresses), and [deterministic finality](https://docs.arc.io/arc/concepts/deterministic-finality).
 
-## Slide 7 — Demo proof, not demo theater
+## Slide 7: Live proof on Arc Testnet
 
-Show these on Arcscan during the demo; replace every placeholder after final deployment/rehearsal.
+The app reads these deployed contracts on chain `5042002`:
 
-<!-- PENDING-DEPLOY:BEGIN -->
-| Proof point | Address or transaction | Explorer |
+| Contract | Arc Testnet address | Explorer |
 | --- | --- | --- |
-| `EscrowFactory` | `PENDING_DEPLOY_ESCROW_FACTORY` | `PENDING_DEPLOY_ESCROW_FACTORY_EXPLORER` |
-| `EscrowV1` implementation | `PENDING_DEPLOY_ESCROW_IMPLEMENTATION` | `PENDING_DEPLOY_ESCROW_IMPLEMENTATION_EXPLORER` |
-| `DisputePanel` | `PENDING_DEPLOY_DISPUTE_PANEL` | `PENDING_DEPLOY_DISPUTE_PANEL_EXPLORER` |
-| `ArbiterRegistry` | `PENDING_DEPLOY_ARBITER_REGISTRY` | `PENDING_DEPLOY_ARBITER_REGISTRY_EXPLORER` |
-| `FeeRouter` | `PENDING_DEPLOY_FEE_ROUTER` | `PENDING_DEPLOY_FEE_ROUTER_EXPLORER` |
-| `ReputationRegistryV0` | `PENDING_DEPLOY_REPUTATION_REGISTRY` | `PENDING_DEPLOY_REPUTATION_REGISTRY_EXPLORER` |
-| Happy-path order | `PENDING_DEMO_HAPPY_ESCROW` | `PENDING_DEMO_HAPPY_ESCROW_EXPLORER` |
-| Atomic release + fee split | `PENDING_DEMO_RELEASE_TX` | `PENDING_DEMO_RELEASE_TX_EXPLORER` |
-| Commit-reveal execution | `PENDING_DEMO_EXECUTE_TX` | `PENDING_DEMO_EXECUTE_TX_EXPLORER` |
-| Reputation attestation | `PENDING_DEMO_ATTEST_TX` | `PENDING_DEMO_ATTEST_TX_EXPLORER` |
-<!-- PENDING-DEPLOY:END -->
+| `EscrowFactory` | `0xb6546d4A7FC5B75FF04828165d17e6a4ad397Da3` | [view](https://testnet.arcscan.app/address/0xb6546d4A7FC5B75FF04828165d17e6a4ad397Da3) |
+| `EscrowV1` implementation | `0x6A0A6fec9002A5b13AEB08F8Dd001b22739C6a5B` | [view](https://testnet.arcscan.app/address/0x6A0A6fec9002A5b13AEB08F8Dd001b22739C6a5B) |
+| `DisputePanel` | `0x0EA143967B3470948329F0304cBBE78Ba8cd827B` | [view](https://testnet.arcscan.app/address/0x0EA143967B3470948329F0304cBBE78Ba8cd827B) |
+| `ArbiterRegistry` | `0x4e1395F57DB8781aDdAbeaf689898f82fe6abb59` | [view](https://testnet.arcscan.app/address/0x4e1395F57DB8781aDdAbeaf689898f82fe6abb59) |
+| `FeeRouter` | `0x2ab6ba6005b7bE5BCD30F24e8d0E5921e8e489e8` | [view](https://testnet.arcscan.app/address/0x2ab6ba6005b7bE5BCD30F24e8d0E5921e8e489e8) |
+| `ReputationRegistryV0` | `0x3962f3e536A55F230bF8Bfa133518eb1Fe1c51e3` | [view](https://testnet.arcscan.app/address/0x3962f3e536A55F230bF8Bfa133518eb1Fe1c51e3) |
 
-**Say only what the receipts prove:** clone created, exact USDC funded, delivery hash submitted,
-settlement and fee split atomic, dispute votes revealed, outcome executed, settlement attested once.
+The final rehearsal completed create → fund → deliver → dispute → 3× commit → 3× reveal → execute → attest. Its resolved order is [`0x9A30090D090E3C8CA3C9A2FB37116D4f4735bD15`](https://testnet.arcscan.app/address/0x9A30090D090E3C8CA3C9A2FB37116D4f4735bD15).
 
-## Slide 8 — Security by constrained authority
+The receipts show the clone, exact USDC funding, delivery hash, revealed votes, selected outcome, 95/5 payout split, and one-time attestation.
 
-- Funds sit only in the per-order escrow until terminal settlement.
+## Slide 8: Authority stays inside fixed bounds
+
+- The per-order escrow holds funds until terminal settlement.
 - Resolver input is an enum, not an address or arbitrary call.
 - Full refunds have no platform fee.
-- Seller-bound transfers and fee math succeed atomically or revert together.
-- Panel execution is permissionless once executable.
+- Vendor transfers and fee math succeed together or revert together.
+- Anyone can execute an available panel outcome.
 - Reputation accepts only registered, resolved escrows and rejects duplicate attestations.
 
-**Trust assumptions today:** allowlist owner, configured council, treasury, contract correctness, and
-off-chain evidence availability.
+Current trust assumptions are the reviewer allowlist owner, configured council, treasury, contract correctness, and off-chain evidence availability.
 
-## Slide 9 — Roadmap: decentralize the judgment, not the payout rules
+## Slide 9: Next steps
 
-- stake-weighted participation with bounded power;
-- accuracy multipliers for future assignments and rewards;
-- slashing with explicit evidence and appeal policy;
-- dispute bonds (the MVP bond is zero);
-- retrievable IPFS evidence dossiers;
-- x402 request flow around the implemented EIP-3009 authorization leg;
-- ERC-8004 identity and reputation interoperability.
+- close the dispute window when its settlement timeout opens;
+- add stake-weighted reviewer participation with bounded power;
+- use agreement history for future assignments and rewards;
+- define an appeal policy before adding slashing;
+- add dispute bonds (the current bond is zero);
+- store retrievable evidence dossiers on IPFS;
+- add an x402 request flow around the implemented EIP-3009 funding path;
+- connect escrow history to ERC-8004 identities.
 
-No roadmap item is required to make the current escrow state machine inspectable.
-
-## Slide 10 — Team and ask
+## Slide 10: Team and ask
 
 **Built for the Arc hackathon by the vAPI team.**
+
+The code is public at <https://github.com/vAPI-Network/vapi-arc>.
 
 **Ask:**
 
 - pressure-test the dispute and timeout design;
-- connect us with marketplaces and agent builders who need a neutral work-verification layer;
-- help take the contracts from tested MVP to independent audit and adversarial pilot.
+- connect us with marketplaces and agent builders that need neutral work review;
+- help move the contracts from a tested MVP to an independent audit and adversarial pilot.
 
-**Close:** “Arc makes programmable money final. vAPI makes the work behind it verifiable.”
+**Close:** “Open the live app, choose an order, and verify its state on Arcscan.”
