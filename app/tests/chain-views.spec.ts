@@ -40,5 +40,5 @@ test("The Census renders score tiles, attest crank, and ledger", async ({ page }
   await expect(page.getByRole("heading", { name: "Resolved, awaiting attestation" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Attest settlement/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Attestation ledger" })).toBeVisible();
-  await expect(page.getByText("Released", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Released 0x/ })).toBeVisible();
 });
