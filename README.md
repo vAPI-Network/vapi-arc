@@ -2,6 +2,9 @@
 
 **Escrow settles the money. Verification settles the work. Reputation compounds the result.**
 
+**Live demo:** <https://vapi-web-production.up.railway.app> — a chain-native dashboard reading the
+deployed contracts on Arc Testnet in real time.
+
 Payment rails can move USDC in under a second; real work cannot be judged in under a second.
 Deliverables are subjective, buyers can disappear, sellers can miss deadlines, and either party can
 dispute the result. vAPI fills that gap with a non-custodial escrow marketplace, time-bounded
