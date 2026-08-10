@@ -1,0 +1,12 @@
+{
+  "name": "@vapi/escrow-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "forge:build": "forge build",
+    "forge:test": "forge test",
+    "forge:fmt": "forge fmt",
+    "forge:fmt:check": "forge fmt --check",
+    "forge:walkthrough": "bash script/walkthrough.sh"
+  }
+}

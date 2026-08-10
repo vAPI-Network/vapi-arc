@@ -1,0 +1,30 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.35"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+fuzz = { runs = 256 }
+invariant = { runs = 128, depth = 32, fail_on_revert = false }
+ignored_warnings_from = ["lib"]
+ignored_error_codes = [6335, 4591]
+
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
+
+remappings = [
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "forge-std/=lib/forge-std/src/"
+]
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = true
+
+[lint]
+exclude_lints = ["block-timestamp", "incorrect-shift", "unsafe-typecast"]

@@ -1,7 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const appUrl = "http://127.0.0.1:4173";
-const reviewUrl = "http://127.0.0.1:8797";
 
 export default defineConfig({
   testDir: "./tests",
@@ -30,23 +29,11 @@ export default defineConfig({
       },
     },
   ],
-  webServer: [
-    {
-      command: "node tests/mock-review-service.mjs",
-      url: `${reviewUrl}/health`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 30_000,
-    },
-    {
-      command:
-        `pnpm build && ` +
-        `PORT=4173 NODE_ENV=test ` +
-        `REVIEW_SERVICE_URL=${reviewUrl} REVIEW_INTERNAL_TOKEN=test-internal-token ` +
-        `DEMO_ACCESS_CODE=trust-demo DEMO_SESSION_SECRET=0123456789abcdef0123456789abcdef ` +
-        "pnpm start",
-      url: `${appUrl}/health`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
-    },
-  ],
+  webServer: {
+    command:
+      "pnpm build && PORT=4173 NODE_ENV=test VAPI_CHAIN_MOCK=1 pnpm start",
+    url: `${appUrl}/health`,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
 });

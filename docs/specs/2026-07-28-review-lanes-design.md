@@ -1,3 +1,5 @@
+Status: superseded by the Work + Verify escrow submission (see README).
+
 # Review lanes: client-chosen evaluation path, enforced on-chain
 
 > **Historical design record.** This document is superseded by the

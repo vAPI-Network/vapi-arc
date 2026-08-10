@@ -1,3 +1,5 @@
+Status: superseded by the Work + Verify escrow submission (see README).
+
 # Paid Human Review Exchange
 
 ## Product

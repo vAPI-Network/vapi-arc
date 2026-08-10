@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   isRouteErrorResponse,
   Links,
@@ -6,11 +7,18 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-  useLocation,
+  useLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import { AddressPill, ArcLink } from "./components/chain-ui";
+import { ARC_CHAIN_ID, getServerChainConfig } from "./lib/chains";
+import { useWallet, WalletProvider } from "./lib/wallet";
 import "./app.css";
+
+export function loader() {
+  return { config: getServerChainConfig() };
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico" },
@@ -31,47 +39,95 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export const meta: Route.MetaFunction = () => [
-  { title: "vAPI Trust Network · Arc Testnet" },
+  { title: "vAPI Work + Verify · Arc Testnet" },
   {
     name: "description",
     content:
-      "On-chain AI and human evaluation history for ERC-8183 jobs on Arc Testnet.",
+      "Chain-native work escrow, dispute resolution, and reputation on Arc Testnet.",
   },
 ];
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? "nav-link-active" : ""}`;
 
+function WalletControl() {
+  const wallet = useWallet();
+  const [error, setError] = useState<string>();
+  const wrongChain = wallet.connected && wallet.chainId !== ARC_CHAIN_ID;
+
+  if (!wallet.connected) {
+    return (
+      <div className="wallet-slot">
+        <button
+          type="button"
+          className="wallet-connect"
+          onClick={() =>
+            void wallet.connect().catch((caught) =>
+              setError(caught instanceof Error ? caught.message : "Wallet connection failed"),
+            )
+          }
+        >
+          {wallet.connecting ? "Opening wallet…" : "Connect wallet"}
+        </button>
+        {error && <span className="wallet-error">{error}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="wallet-control">
+      <div className="wallet-identity">
+        <AddressPill address={wallet.account!} />
+        <span className="role-badge">Actor</span>
+        {wallet.isArbiter && <span className="role-badge role-arbiter">Praetor</span>}
+      </div>
+      <div className="wallet-actions">
+        {wrongChain && (
+          <button
+            type="button"
+            className="network-switch"
+            onClick={() => void wallet.switchToArc().catch(() => undefined)}
+          >
+            Switch to Arc
+          </button>
+        )}
+        <button
+          type="button"
+          className="actor-switch"
+          onClick={() => void wallet.switchActor().catch(() => undefined)}
+        >
+          Change actor
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Header() {
   return (
     <header className="site-header">
       <div className="shell header-inner">
-        <NavLink to="/" className="wordmark" aria-label="vAPI Trust Network home">
-          <picture>
-            <source
-              media="(prefers-color-scheme: dark)"
-              srcSet="/brand/vapi-wordmark-on-dark.png"
-            />
-            <img
-              src="/brand/vapi-wordmark-on-light.png"
-              alt=""
-              width="469"
-              height="154"
-            />
-          </picture>
-          <span>Trust Network</span>
+        <NavLink to="/" className="wordmark" aria-label="vAPI Work and Verify home">
+          <img
+            src="/brand/vapi-wordmark-on-light.png"
+            alt="vAPI"
+            width="469"
+            height="154"
+          />
+          <span>Work + Verify</span>
         </NavLink>
         <nav aria-label="Primary navigation" className="primary-nav">
           <NavLink to="/" end className={navClass}>
-            Feed
+            The Forum
           </NavLink>
-          <NavLink to="/demo" className={navClass}>
-            Demo
+          <NavLink to="/arbiters" className={navClass}>
+            The Praetors
           </NavLink>
-          <NavLink to="/review" className={navClass}>
-            Review
+          <NavLink to="/reputation" className={navClass}>
+            The Census
           </NavLink>
         </nav>
+        <WalletControl />
       </div>
     </header>
   );
@@ -81,49 +137,34 @@ function Footer() {
   return (
     <footer className="site-footer">
       <div className="shell footer-inner">
-        <span>Arc Testnet</span>
-        <span aria-hidden="true">·</span>
-        <a
-          href="https://testnet.arcscan.app/address/0x0747EEf0706327138c69792bF28Cd525089e4583"
-          target="_blank"
-          rel="noreferrer"
-        >
-          AgenticCommerce <span className="mono">0x0747…4583</span>
-        </a>
-        <span aria-hidden="true">·</span>
-        <a href="/openapi.json">OpenAPI</a>
+        <span className="network-lockup">
+          <span className="network-dot" aria-hidden="true" />
+          Arc Testnet · Chain ID {ARC_CHAIN_ID}
+        </span>
+        <span>USDC settles work and pays network gas.</span>
+        <ArcLink>Open ArcScan</ArcLink>
       </div>
     </footer>
   );
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const location = useLocation();
-  const presenterMode =
-    location.pathname === "/demo" &&
-    new URLSearchParams(location.search).get("present") === "1";
-
+  const { config } = useLoaderData<typeof loader>();
   return (
-    <html lang="en" className={presenterMode ? "presenter-mode" : undefined}>
+    <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="color-scheme" content="light dark" />
+        <meta name="color-scheme" content="light" />
         <Meta />
         <Links />
       </head>
       <body>
-        {!presenterMode && <Header />}
-        <main
-          className={
-            presenterMode
-              ? "shell main-content presenter-main"
-              : "shell main-content"
-          }
-        >
-          {children}
-        </main>
-        {!presenterMode && <Footer />}
+        <WalletProvider config={config}>
+          <Header />
+          <main className="shell main-content">{children}</main>
+          <Footer />
+        </WalletProvider>
         <ScrollRestoration />
         <Scripts />
       </body>
@@ -136,25 +177,24 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  let title = "Chain data is temporarily unavailable";
-  let detail =
-    "The Arc Testnet RPC did not return a usable response. Please try again in a moment.";
-
+  let title = "Arc could not answer this request";
+  let detail = "The next chain read may succeed. Return to the marketplace and try again.";
   if (isRouteErrorResponse(error)) {
-    title = error.status === 404 ? "Page not found" : title;
-    if (error.status === 400) {
+    if (error.status === 404) {
+      title = "Order not found";
+      detail = "No registered escrow was found at that address.";
+    } else if (error.status === 400) {
       title = "That address is not valid";
-      detail = "Enter a complete 0x-prefixed Ethereum address and try again.";
+      detail = "Use a complete 0x-prefixed EVM address.";
     }
   }
-
   return (
     <section className="error-state" aria-labelledby="error-title">
-      <p className="eyebrow">Arc Testnet</p>
+      <span className="error-code">Chain read</span>
       <h1 id="error-title">{title}</h1>
       <p>{detail}</p>
-      <NavLink to="/" className="button">
-        Back to jobs
+      <NavLink to="/" className="action-button">
+        Return to The Forum
       </NavLink>
     </section>
   );
