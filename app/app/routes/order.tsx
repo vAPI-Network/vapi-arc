@@ -28,6 +28,7 @@ import {
   escrowV1Abi,
 } from "~/lib/abi/escrow-v1";
 import { CHAIN_POLL_INTERVAL_MS, getServerChainConfig } from "~/lib/chains";
+import { briefTitle, useBrief } from "~/lib/job-briefs";
 import { readOrder, type OrderSnapshot } from "~/lib/chain-data";
 import { useWallet } from "~/lib/wallet";
 
@@ -202,6 +203,8 @@ function OrderView({
   const isBuyer = account === order.buyer.toLowerCase();
   const isSeller = account === order.seller.toLowerCase();
   const isParty = isBuyer || isSeller;
+  const brief = useBrief(order.termsHash);
+  const jobTitle = briefTitle(brief);
   const isCounterparty =
     order.state === EscrowState.DISPUTED &&
     Boolean(account && order.disputeRaisedBy) &&
@@ -255,6 +258,7 @@ function OrderView({
             <span className="mono block-mark">Created in block #{order.blockNumber}</span>
           </div>
           <h1>{formatUsdc(order.amount)}</h1>
+          {jobTitle && <p className="order-job-title">{jobTitle}</p>}
           <p className="roman-subtitle">A single covenant, settled by the chain</p>
           <AddressPill address={order.address} />
           <p className="custody-note">
@@ -293,6 +297,16 @@ function OrderView({
           <small className="fact-note">
             A tamper-proof fingerprint of the job description both sides agreed to.
           </small>
+          {brief && (
+            <div className="brief-text">
+              <span>What was agreed</span>
+              <p>{brief}</p>
+              <small className="fact-note">
+                Readable copy cached in this browser at creation — the chain only
+                stores its fingerprint above.
+              </small>
+            </div>
+          )}
         </div>
         {order.deliveryHash !== `0x${"0".repeat(64)}` && (
           <div className="fact-block fact-hash">

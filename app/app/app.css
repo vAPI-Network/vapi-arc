@@ -2803,3 +2803,52 @@ code {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Job briefs (readable titles cached in-browser; chain stores the hash) */
+.order-job-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  letter-spacing: -0.01em;
+}
+
+.order-hero .order-job-title {
+  font-size: 17px;
+  margin: 2px 0 0;
+}
+
+.brief-text {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 0.125rem;
+}
+
+.brief-text > span {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.brief-text p {
+  margin: 4px 0 2px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.agent-note {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 0.125rem;
+}
