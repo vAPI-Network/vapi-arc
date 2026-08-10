@@ -25,6 +25,7 @@ import {
 import { EscrowState, escrowFactoryAbi } from "~/lib/abi/escrow-v1";
 import { CHAIN_POLL_INTERVAL_MS, getServerChainConfig } from "~/lib/chains";
 import { readMarketplace } from "~/lib/chain-data";
+import { briefTitle, saveBrief, useBriefs } from "~/lib/job-briefs";
 import { useWallet } from "~/lib/wallet";
 
 export const meta: Route.MetaFunction = () => [
@@ -58,6 +59,7 @@ function randomSalt(): Hex {
 export default function Marketplace() {
   const { config, snapshot: initial } = useLoaderData<typeof loader>();
   const wallet = useWallet();
+  const briefs = useBriefs();
   const [buyer, setBuyer] = useState("");
   const [amount, setAmount] = useState("125");
   const [workDays, setWorkDays] = useState("7");
@@ -84,6 +86,7 @@ export default function Marketplace() {
     if (!factory || !wallet.account || !isAddress(buyer)) {
       throw new Error("Connect a vendor wallet and enter a valid client address.");
     }
+    saveBrief(termsHash, terms);
     return wallet.writeContract({
       address: factory,
       abi: escrowFactoryAbi,
@@ -129,6 +132,11 @@ export default function Marketplace() {
           <li><span className="mono">2</span><strong>Vendor delivers the work</strong></li>
           <li><span className="mono">3</span><strong>Funds release automatically — disputes go to a 3-reviewer panel</strong></li>
         </ol>
+        <p className="agent-note">
+          Agent-ready: every step here is a plain contract call settled in USDC —
+          an AI agent can hire a vendor, pay the escrow, and collect the result
+          over x402-style machine payments, no human in the loop.
+        </p>
       </section>
 
       <ChainError message={snapshot.error} />
@@ -172,6 +180,11 @@ export default function Marketplace() {
                       <span className="block-mark mono">#{order.blockNumber}</span>
                     </span>
                     <strong className="order-amount">{formatUsdc(order.amount)}</strong>
+                    {briefTitle(briefs[order.termsHash.toLowerCase()]) && (
+                      <span className="order-job-title">
+                        {briefTitle(briefs[order.termsHash.toLowerCase()])}
+                      </span>
+                    )}
                     <span className="order-status">
                       {ORDER_STATUS[order.state] ?? "Order status unavailable"}
                     </span>
