@@ -239,8 +239,22 @@ code {
 .nav-link-active {
   border-color: var(--ink);
   color: var(--ink);
-  background: var(--lime);
+  background: var(--orange);
   box-shadow: var(--shadow-hard-sm);
+}
+
+/* Signature vAPI brand strip — orange, Base blue, pink, lime, cyan, purple. */
+.brand-strip {
+  height: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--orange) 0 52%,
+    var(--blue) 52% 76%,
+    var(--pink) 76% 90%,
+    var(--lime) 90% 97%,
+    var(--cyan) 97% 99%,
+    #8a37fb 99% 100%
+  );
 }
 
 .wallet-slot {
@@ -518,7 +532,8 @@ code {
 .order-parties {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .party-arrow {
@@ -839,13 +854,14 @@ code {
 .address-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   min-width: 0;
   border-radius: var(--radius);
-  padding: 4px 5px 4px 8px;
+  padding: 5px 7px 5px 10px;
   color: var(--ink-soft);
   background: rgba(102, 112, 133, 0.1);
-  font-size: 10px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .address-label {
@@ -854,8 +870,9 @@ code {
 }
 
 .address-value {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .address-value:hover {
@@ -2055,10 +2072,10 @@ code {
 .state-6 { color: var(--ink); background: var(--surface-muted); }
 
 .address-pill {
-  border: 1px solid var(--ink);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   color: var(--ink-soft);
-  background: var(--surface-muted);
+  background: #ffffff;
 }
 
 .copy-control {
