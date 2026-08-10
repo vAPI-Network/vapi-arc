@@ -42,10 +42,10 @@ views:
 
 | View | Purpose |
 | --- | --- |
-| **The Forum** | Browse orders and create a seller offer. |
-| **Order detail** | Fund, submit, release, refund, dispute, and inspect deadlines and receipts. |
-| **The Praetors** | Follow dispute phases and submit an allowlisted arbiter's commit or reveal. |
-| **The Census** | Read the registry's raw, on-chain settlement counters for an address. |
+| **Marketplace** (The Forum) | Browse jobs and post a vendor offer with a readable brief. |
+| **Order detail** | Fund, deliver, accept, refund, dispute — with role banners and plain-language receipts. |
+| **Disputes** (The Praetors) | Follow dispute phases and cast a registered reviewer's sealed commit and reveal. |
+| **Reputation** (The Census) | Read the registry's raw, on-chain settlement counters for any address. |
 
 The contract boundary is deliberately small:
 
@@ -251,6 +251,6 @@ The roadmap is deliberately outside the current claim:
 ## Repository map
 
 - `packages/escrow-contracts/`: Solidity contracts, deploy scripts, and Foundry tests.
-- `app/`: React Router demo with The Forum, order detail, The Praetors, and The Census.
+- `app/`: chain-native React Router app — Marketplace, order detail, Disputes, and Reputation views.
 - `docs/submission/`: video beat sheet and deck copy.
 - `docs/specs/`: superseded design records retained as historical context.
