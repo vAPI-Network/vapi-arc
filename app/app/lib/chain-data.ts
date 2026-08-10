@@ -6,13 +6,9 @@ import {
   type Hex,
 } from "viem";
 
-import {
-  disputePanelAbi,
-  escrowFactoryAbi,
-  escrowV1Abi,
-  reputationRegistryAbi,
-} from "./abi/escrow-v1";
+import { escrowV1Abi, reputationRegistryAbi } from "./abi/escrow-v1";
 import { arcTestnet, type ChainRuntimeConfig } from "./chains";
+import { syncLogStore } from "./log-store";
 
 export type MarketplaceOrder = {
   address: Address;
@@ -163,18 +159,9 @@ export async function readMarketplace(
 
   try {
     const client = makePublicClient(config);
-    const fromBlock = BigInt(config.deployBlock);
-    const [logs, blockNumber] = await Promise.all([
-      client.getContractEvents({
-        address: factory,
-        abi: escrowFactoryAbi,
-        eventName: "EscrowCreated",
-        fromBlock,
-        toBlock: "latest",
-        strict: true,
-      }),
-      client.getBlockNumber(),
-    ]);
+    const { store, error } = await syncLogStore(client, config);
+    const logs = store.created;
+    if (error && logs.length === 0) return { orders: [], error };
     const stateResults = await client.multicall({
       allowFailure: true,
       contracts: logs.map((log) => ({
@@ -201,7 +188,7 @@ export async function readMarketplace(
       } satisfies MarketplaceOrder;
     });
     orders.reverse();
-    return { orders, blockNumber: blockNumber.toString() };
+    return { orders, blockNumber: store.cursor.toString(), error };
   } catch (error) {
     return {
       orders: [],
@@ -235,50 +222,39 @@ export async function readOrder(
   if (!factory) return undefined;
 
   const client = makePublicClient(config);
-  const fromBlock = BigInt(config.deployBlock);
-  const [createdLogs, values, disputeLogs] = await Promise.all([
-    client.getContractEvents({
-      address: factory,
-      abi: escrowFactoryAbi,
-      eventName: "EscrowCreated",
-      args: { escrow: address },
-      fromBlock,
-      toBlock: "latest",
-      strict: true,
-    }),
-    client.multicall({
-      allowFailure: false,
-      contracts: [
-        "state",
-        "resolution",
-        "buyer",
-        "seller",
-        "token",
-        "amount",
-        "termsHash",
-        "deliveryHash",
-        "offerDeadline",
-        "workDeadline",
-        "reviewDeadline",
-        "disputedAt",
-        "counterEvidenceDeadline",
-      ].map((functionName) => ({
-        address,
-        abi: escrowV1Abi,
-        functionName,
-      })) as never,
-    }) as Promise<readonly unknown[]>,
-    client.getContractEvents({
+  const { store, error } = await syncLogStore(client, config);
+  const created = store.created
+    .filter((log) => log.args.escrow.toLowerCase() === address.toLowerCase())
+    .at(-1);
+  if (!created) {
+    if (error) throw new Error(error);
+    return undefined;
+  }
+  const values = (await client.multicall({
+    allowFailure: false,
+    contracts: [
+      "state",
+      "resolution",
+      "buyer",
+      "seller",
+      "token",
+      "amount",
+      "termsHash",
+      "deliveryHash",
+      "offerDeadline",
+      "workDeadline",
+      "reviewDeadline",
+      "disputedAt",
+      "counterEvidenceDeadline",
+    ].map((functionName) => ({
       address,
       abi: escrowV1Abi,
-      eventName: "DisputeRaised",
-      fromBlock,
-      toBlock: "latest",
-      strict: true,
-    }),
-  ]);
-  const created = createdLogs.at(-1);
-  if (!created) return undefined;
+      functionName,
+    })) as never,
+  })) as readonly unknown[];
+  const opened = store.opened
+    .filter((log) => log.args.escrow.toLowerCase() === address.toLowerCase())
+    .at(-1);
   return {
     address,
     state: Number(values[0]),
@@ -294,7 +270,7 @@ export async function readOrder(
     reviewDeadline: Number(values[10]),
     disputedAt: Number(values[11]),
     counterEvidenceDeadline: Number(values[12]),
-    disputeRaisedBy: disputeLogs.at(-1)?.args.by,
+    disputeRaisedBy: opened?.args.raisedBy,
     workDuration: Number(created.args.workDuration),
     reviewWindow: Number(created.args.reviewWindow),
     blockNumber: (created.blockNumber ?? 0n).toString(),
@@ -328,37 +304,9 @@ export async function readDisputes(
   if (!panel) return { disputes: [] };
   try {
     const client = makePublicClient(config);
-    const range = { fromBlock: BigInt(config.deployBlock), toBlock: "latest" as const };
-    const [opened, committed, revealed, executed] = await Promise.all([
-      client.getContractEvents({
-        address: panel,
-        abi: disputePanelAbi,
-        eventName: "DisputeOpened",
-        ...range,
-        strict: true,
-      }),
-      client.getContractEvents({
-        address: panel,
-        abi: disputePanelAbi,
-        eventName: "VoteCommitted",
-        ...range,
-        strict: true,
-      }),
-      client.getContractEvents({
-        address: panel,
-        abi: disputePanelAbi,
-        eventName: "VoteRevealed",
-        ...range,
-        strict: true,
-      }),
-      client.getContractEvents({
-        address: panel,
-        abi: disputePanelAbi,
-        eventName: "DisputeExecuted",
-        ...range,
-        strict: true,
-      }),
-    ]);
+    const { store, error } = await syncLogStore(client, config);
+    if (error && store.opened.length === 0) return { disputes: [], error };
+    const { opened, committed, revealed, executed } = store;
     const disputes = opened.map((log) => {
       const escrow = log.args.escrow;
       const caseCommits = committed.filter(
@@ -388,7 +336,7 @@ export async function readDisputes(
       } satisfies DisputeSnapshot;
     });
     disputes.reverse();
-    return { disputes };
+    return { disputes, error };
   } catch (error) {
     return {
       disputes: [],
@@ -428,7 +376,8 @@ export async function readReputation(
   if (!registry) return { subject, attestations: [], unattested: [] };
   try {
     const client = makePublicClient(config);
-    const [score, logs, market] = await Promise.all([
+    const { store, error } = await syncLogStore(client, config);
+    const [score, market] = await Promise.all([
       subject
         ? client.readContract({
             address: registry,
@@ -437,16 +386,9 @@ export async function readReputation(
             args: [subject],
           })
         : undefined,
-      client.getContractEvents({
-        address: registry,
-        abi: reputationRegistryAbi,
-        eventName: "SettlementAttested",
-        fromBlock: BigInt(config.deployBlock),
-        toBlock: "latest",
-        strict: true,
-      }),
       subject ? readMarketplace(config) : undefined,
     ]);
+    const logs = store.attested;
     const attestations = logs
       .filter(
         (log) =>
@@ -473,6 +415,7 @@ export async function readReputation(
     );
     return {
       subject,
+      error,
       score: score
         ? {
             settled: Number(score[0]),
