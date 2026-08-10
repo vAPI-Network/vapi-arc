@@ -41,11 +41,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
           RAILWAY_WEB_SERVICE_ID: ${{ vars.RAILWAY_WEB_SERVICE_ID }}
-          RAILWAY_REVIEW_SERVICE_ID: ${{ vars.RAILWAY_REVIEW_SERVICE_ID }}
-          RAILWAY_JUDGE_SERVICE_ID: ${{ vars.RAILWAY_JUDGE_SERVICE_ID }}
           WEB_URL: ${{ vars.WEB_URL }}
-          REVIEW_URL: ${{ vars.REVIEW_URL }}
-          REVIEW_INTERNAL_TOKEN: ${{ secrets.REVIEW_INTERNAL_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -53,11 +49,7 @@ jobs:
             RAILWAY_TOKEN \
             RAILWAY_PROJECT_ID \
             RAILWAY_WEB_SERVICE_ID \
-            RAILWAY_REVIEW_SERVICE_ID \
-            RAILWAY_JUDGE_SERVICE_ID \
-            WEB_URL \
-            REVIEW_URL \
-            REVIEW_INTERNAL_TOKEN; do
+            WEB_URL; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::GitHub production configuration is missing ${name}"
               exit 1
@@ -65,84 +57,21 @@ jobs:
           done
 
           uuid_pattern='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          for name in \
-            RAILWAY_PROJECT_ID \
-            RAILWAY_WEB_SERVICE_ID \
-            RAILWAY_REVIEW_SERVICE_ID \
-            RAILWAY_JUDGE_SERVICE_ID; do
+          for name in RAILWAY_PROJECT_ID RAILWAY_WEB_SERVICE_ID; do
             if [[ ! "${!name}" =~ $uuid_pattern ]]; then
               echo "::error::${name} must be a Railway service UUID"
               exit 1
             fi
           done
 
-          for name in WEB_URL REVIEW_URL; do
-            if [[ ! "${!name}" =~ ^https:// ]]; then
-              echo "::error::${name} must use HTTPS"
-              exit 1
-            fi
-          done
-
-  deploy-review:
-    name: Deploy review exchange
-    needs: preflight
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: production
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: ${{ needs.preflight.outputs.deploy-ref }}
-          persist-credentials: false
-
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
-        with:
-          node-version: "22"
-
-      - name: Install Railway CLI
-        run: npm install --global @railway/cli@5.30.1
-
-      - uses: ./.github/actions/railway-deploy
-        with:
-          project-id: ${{ vars.RAILWAY_PROJECT_ID }}
-          service-id: ${{ vars.RAILWAY_REVIEW_SERVICE_ID }}
-          environment: production
-          service-name: vapi-review
-          health-url: ${{ vars.REVIEW_URL }}/health
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-  deploy-judge:
-    name: Deploy judge worker
-    needs: [preflight, deploy-review]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: production
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: ${{ needs.preflight.outputs.deploy-ref }}
-          persist-credentials: false
-
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
-        with:
-          node-version: "22"
-
-      - name: Install Railway CLI
-        run: npm install --global @railway/cli@5.30.1
-
-      - uses: ./.github/actions/railway-deploy
-        with:
-          project-id: ${{ vars.RAILWAY_PROJECT_ID }}
-          service-id: ${{ vars.RAILWAY_JUDGE_SERVICE_ID }}
-          environment: production
-          service-name: vapi-judge
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          if [[ ! "$WEB_URL" =~ ^https:// ]]; then
+            echo "::error::WEB_URL must use HTTPS"
+            exit 1
+          fi
 
   deploy-web:
-    name: Deploy dashboard
-    needs: [preflight, deploy-review, deploy-judge]
+    name: Deploy app
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -169,119 +98,59 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
-  smoke-demo:
-    name: Verify live demo rails
-    needs: [preflight, deploy-review, deploy-judge, deploy-web]
+  smoke:
+    name: Verify live app
+    needs: [preflight, deploy-web]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
     steps:
-      - name: Check authenticated readiness and locked demo
+      - name: Check marketplace, health, and assets
         env:
-          REVIEW_URL: ${{ vars.REVIEW_URL }}
           WEB_URL: ${{ vars.WEB_URL }}
-          REVIEW_INTERNAL_TOKEN: ${{ secrets.REVIEW_INTERNAL_TOKEN }}
         run: |
           set -euo pipefail
 
-          snapshot=""
-          snapshot_healthy="false"
-          for attempt in {1..18}; do
-            snapshot="$(curl --fail --silent --show-error \
-              --retry 2 --retry-delay 2 --retry-all-errors \
-              --header "Authorization: Bearer ${REVIEW_INTERNAL_TOKEN}" \
-              "${REVIEW_URL}/internal/dashboard-chain-snapshot")"
-            snapshot_status="$(jq -r '.status' <<<"$snapshot")"
-            if [[ "$(jq -r '.version' <<<"$snapshot")" == "1" &&
-                  "$(jq -r '.configured' <<<"$snapshot")" == "true" &&
-                  "$(jq -r '.indexedAt // empty' <<<"$snapshot")" != "" &&
-                  "$(jq -r '.latestBlock // empty' <<<"$snapshot")" != "" &&
-                  "$snapshot_status" =~ ^(ready|stale|degraded)$ ]]; then
-              snapshot_healthy="true"
-              break
-            fi
-            if [[ "$attempt" -lt 18 ]]; then
-              sleep 5
-            fi
-          done
-          if [[ "$snapshot_healthy" != "true" ]]; then
-            jq '{version, configured, status, indexedAt, latestBlock, lastAttemptAt, lastError}' \
-              <<<"$snapshot"
-            echo "::error::Durable Arc dashboard snapshot did not complete an initial verified pass"
-            exit 1
-          fi
-
-          readiness="$(curl --fail --silent --show-error \
+          curl --fail --silent --show-error \
             --retry 8 --retry-delay 3 --retry-all-errors \
-            --header "Authorization: Bearer ${REVIEW_INTERNAL_TOKEN}" \
-            "${REVIEW_URL}/internal/demo/readiness")"
-          if [[ "$(jq -r '.readiness.ready' <<<"$readiness")" != "true" ]]; then
-            jq '.readiness | {ready, checks}' <<<"$readiness"
-            echo "::error::Live demo readiness is blocked after deployment"
-            exit 1
-          fi
+            "${WEB_URL}/health" >/dev/null
 
-          demo_html="$(curl --fail --silent --show-error \
+          home_html="$(curl --fail --silent --show-error \
             --retry 8 --retry-delay 3 --retry-all-errors \
-            "${WEB_URL}/demo")"
-          if [[ "$demo_html" != *"vAPI Trust Network demo"* ]]; then
-            echo "::error::Locked live demo did not render"
+            "${WEB_URL}/")"
+          if [[ "$home_html" != *"Work marketplace"* ]]; then
+            echo "::error::Marketplace page did not render"
             exit 1
           fi
 
-          if [[ "$demo_html" =~ (/assets/root-[A-Za-z0-9_-]+\.css) ]]; then
+          if [[ "$home_html" =~ (/assets/root-[A-Za-z0-9_-]+\.css) ]]; then
             css_path="${BASH_REMATCH[1]}"
           else
-            css_path=""
-          fi
-          if [[ "$demo_html" =~ (/assets/entry\.client-[A-Za-z0-9_-]+\.js) ]]; then
-            js_path="${BASH_REMATCH[1]}"
-          else
-            js_path=""
-          fi
-          if [[ -z "$css_path" || -z "$js_path" ]]; then
-            echo "::error::Live demo HTML did not reference its compiled CSS and JavaScript"
+            echo "::error::Home HTML did not reference compiled CSS"
             exit 1
           fi
-
-          for asset_path in \
-            "$css_path" \
-            "$js_path" \
-            "/telegram-trust-council-qr.svg"; do
+          if [[ "$home_html" =~ (/assets/entry\.client-[A-Za-z0-9_-]+\.js) ]]; then
+            js_path="${BASH_REMATCH[1]}"
+          else
+            echo "::error::Home HTML did not reference compiled JavaScript"
+            exit 1
+          fi
+          for asset_path in "$css_path" "$js_path"; do
             curl --fail --silent --show-error \
               --retry 8 --retry-delay 3 --retry-all-errors \
               "${WEB_URL}${asset_path}" >/dev/null
           done
 
-          curl --fail --silent --show-error \
-            --retry 8 --retry-delay 3 --retry-all-errors \
-            "${WEB_URL}/health/demo" >/dev/null
-
-          measure_ttfb() {
-            local route="$1"
-            local threshold="$2"
-            local seconds
-            seconds="$(curl --fail --silent --show-error \
-              --max-time 5 \
-              --output /dev/null \
-              --write-out '%{time_starttransfer}' \
-              "${WEB_URL}${route}")"
-            if ! awk -v actual="$seconds" -v maximum="$threshold" \
-              'BEGIN { exit !(actual <= maximum) }'; then
-              echo "::error::${route} TTFB was ${seconds}s; expected <= ${threshold}s"
-              exit 1
-            fi
-            echo "${route} TTFB: ${seconds}s"
-          }
-
-          measure_ttfb "/" "2.5"
-          measure_ttfb "/review" "2.5"
-          measure_ttfb "/demo" "2.5"
+          for route in /arbiters /reputation; do
+            curl --fail --silent --show-error \
+              --retry 4 --retry-delay 3 --retry-all-errors \
+              "${WEB_URL}${route}" >/dev/null
+          done
 
   summary:
     name: Deployment summary
     if: always() && needs.preflight.result != 'skipped'
-    needs: [preflight, deploy-review, deploy-judge, deploy-web, smoke-demo]
+    needs: [preflight, deploy-web, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
@@ -289,25 +158,18 @@ jobs:
       - name: Summarize
         env:
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
-          REVIEW_RESULT: ${{ needs.deploy-review.result }}
-          JUDGE_RESULT: ${{ needs.deploy-judge.result }}
           WEB_RESULT: ${{ needs.deploy-web.result }}
-          SMOKE_RESULT: ${{ needs.smoke-demo.result }}
+          SMOKE_RESULT: ${{ needs.smoke.result }}
           WEB_URL: ${{ vars.WEB_URL }}
-          REVIEW_URL: ${{ vars.REVIEW_URL }}
         run: |
           {
-            echo "## vAPI Arc deployment"
+            echo "## vAPI Work + Verify deployment"
             echo "- Preflight: ${PREFLIGHT_RESULT}"
-            echo "- Review: ${REVIEW_RESULT} — ${REVIEW_URL}"
-            echo "- Judge: ${JUDGE_RESULT}"
-            echo "- Dashboard: ${WEB_RESULT} — ${WEB_URL}"
-            echo "- Live demo smoke: ${SMOKE_RESULT}"
+            echo "- App: ${WEB_RESULT} — ${WEB_URL}"
+            echo "- Smoke: ${SMOKE_RESULT}"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$PREFLIGHT_RESULT" != "success" ||
-                "$REVIEW_RESULT" != "success" ||
-                "$JUDGE_RESULT" != "success" ||
                 "$WEB_RESULT" != "success" ||
                 "$SMOKE_RESULT" != "success" ]]; then
             exit 1
