@@ -215,6 +215,10 @@ audited production infrastructure.
 
 The roadmap is deliberately outside the current claim:
 
+- **Deadline-scoped disputes:** V0 keeps `raiseDispute` open for the entire LOCKED/SUBMITTED life
+  of an order, so a party can still pull an order into arbitration after the `timeoutRefund` or
+  `finalize` deadline has passed. Funds stay safe — the panel or council settles either way — but
+  V1 will close disputes at the same deadlines that unlock automatic settlement.
 - **Stake-weighted power:** move from today's owner-managed allowlist to stake-gated participation
   and explicitly bounded voting power.
 - **Accuracy multipliers:** weight future assignments and rewards by long-run agreement with
