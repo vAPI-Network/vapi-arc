@@ -129,6 +129,7 @@ function Header() {
         </nav>
         <WalletControl />
       </div>
+      <div className="brand-strip" aria-hidden="true" />
     </header>
   );
 }
